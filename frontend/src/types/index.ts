@@ -41,6 +41,7 @@ export interface Project {
   country: string;
   department: 'floor_plan' | 'photos_enhancement';
   client_name: string;
+  description?: string;
   status: 'active' | 'inactive' | 'completed';
   total_orders: number;
   completed_orders: number;

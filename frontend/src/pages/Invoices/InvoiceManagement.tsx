@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/store';
-import { invoiceService } from '../../services';
+import { invoiceService, projectService } from '../../services';
 import type { Invoice } from '../../types';
-import { FileText, Plus, Search, Eye, CheckCircle, Send, DollarSign, Clock, XCircle, TrendingUp, ArrowRight, Calendar, Tag, Receipt } from 'lucide-react';
+import { FileText, Plus, Search, Eye, CheckCircle, Send, DollarSign, Clock, XCircle, TrendingUp, ArrowRight, Calendar, Tag, Receipt, X } from 'lucide-react';
+
+const emptyInvoiceForm = {
+  invoice_number: '',
+  project_id: '',
+  invoice_category: 'general',
+  total_amount: '',
+  invoice_date: new Date().toISOString().split('T')[0],
+  due_date: '',
+  notes: '',
+};
 
 const InvoiceManagement = () => {
   const { user } = useSelector((state: RootState) => state.auth);
@@ -11,6 +21,12 @@ const InvoiceManagement = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [showModal, setShowModal] = useState(false);
+  const [formData, setFormData] = useState(emptyInvoiceForm);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [showDetailModal, setShowDetailModal] = useState<Invoice | null>(null);
+  const [projects, setProjects] = useState<any[]>([]);
 
   useEffect(() => {
     loadInvoices();
@@ -51,6 +67,38 @@ const InvoiceManagement = () => {
       loadInvoices();
     } catch (error) {
       console.error('Error marking invoice as sent:', error);
+    }
+  };
+
+  const openCreateModal = async () => {
+    setFormData(emptyInvoiceForm);
+    setFormError('');
+    try {
+      const res = await projectService.getAll();
+      setProjects(res.data);
+    } catch (e) { /* ignore */ }
+    setShowModal(true);
+  };
+
+  const handleCreateInvoice = async () => {
+    if (!formData.invoice_number || !formData.total_amount) {
+      setFormError('Invoice number and amount are required.');
+      return;
+    }
+    try {
+      setSaving(true);
+      setFormError('');
+      await invoiceService.create({
+        ...formData,
+        project_id: formData.project_id ? Number(formData.project_id) : undefined,
+        total_amount: Number(formData.total_amount),
+      } as any);
+      setShowModal(false);
+      loadInvoices();
+    } catch (error: any) {
+      setFormError(error.response?.data?.message || 'Failed to create invoice.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -95,7 +143,7 @@ const InvoiceManagement = () => {
           <p className="text-slate-500 mt-2">Manage invoices and billing</p>
         </div>
         {canManageInvoices && (
-          <button className="btn btn-primary group">
+          <button onClick={openCreateModal} className="btn btn-primary group">
             <Plus className="w-4 h-4" />
             New Invoice
             <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -249,7 +297,7 @@ const InvoiceManagement = () => {
                     </div>
 
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-2.5 hover:bg-slate-100 rounded-xl transition-all hover:scale-110" aria-label="View invoice details">
+                      <button onClick={() => setShowDetailModal(invoice)} className="p-2.5 hover:bg-slate-100 rounded-xl transition-all hover:scale-110" aria-label="View invoice details">
                         <Eye className="w-4 h-4 text-slate-600" />
                       </button>
                       
@@ -288,7 +336,7 @@ const InvoiceManagement = () => {
                 <h3 className="text-xl font-bold text-slate-900 mb-2">No invoices found</h3>
                 <p className="text-slate-500 max-w-md mx-auto">Try adjusting your search filters or create a new invoice.</p>
                 {canManageInvoices && (
-                  <button className="btn btn-primary mt-6">
+                  <button onClick={openCreateModal} className="btn btn-primary mt-6">
                     <Plus className="w-4 h-4" />
                     Create Invoice
                   </button>
@@ -296,6 +344,122 @@ const InvoiceManagement = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Create Invoice Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto animate-fade-in">
+            <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-lg">
+              <X className="h-5 w-5 text-slate-400" />
+            </button>
+            <h2 className="text-xl font-bold text-slate-900 mb-6">Create New Invoice</h2>
+            {formError && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-600">{formError}</div>
+            )}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Invoice Number *</label>
+                <input type="text" value={formData.invoice_number} onChange={e => setFormData({...formData, invoice_number: e.target.value})} className="input" placeholder="INV-001" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Project</label>
+                <select value={formData.project_id} onChange={e => setFormData({...formData, project_id: e.target.value})} className="input">
+                  <option value="">Select project...</option>
+                  {projects.map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Amount *</label>
+                  <input type="number" step="0.01" value={formData.total_amount} onChange={e => setFormData({...formData, total_amount: e.target.value})} className="input" placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                  <select value={formData.invoice_category} onChange={e => setFormData({...formData, invoice_category: e.target.value})} className="input">
+                    <option value="general">General</option>
+                    <option value="floor_plan">Floor Plan</option>
+                    <option value="photos">Photos</option>
+                    <option value="enhancement">Enhancement</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Invoice Date</label>
+                  <input type="date" value={formData.invoice_date} onChange={e => setFormData({...formData, invoice_date: e.target.value})} className="input" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+                  <input type="date" value={formData.due_date} onChange={e => setFormData({...formData, due_date: e.target.value})} className="input" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                <textarea value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="input" rows={3} placeholder="Optional notes..." />
+              </div>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setShowModal(false)} className="flex-1 btn btn-secondary">Cancel</button>
+              <button onClick={handleCreateInvoice} disabled={saving} className="flex-1 btn btn-primary">
+                {saving ? 'Creating...' : 'Create Invoice'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Detail Modal */}
+      {showDetailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowDetailModal(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-fade-in">
+            <button onClick={() => setShowDetailModal(null)} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-lg">
+              <X className="h-5 w-5 text-slate-400" />
+            </button>
+            <h2 className="text-xl font-bold text-slate-900 mb-6">Invoice Details</h2>
+            <div className="space-y-3">
+              {[
+                { label: 'Invoice Number', value: showDetailModal.invoice_number },
+                { label: 'Status', value: showDetailModal.status?.replace('_', ' ') },
+                { label: 'Amount', value: `$${(showDetailModal.total_amount ?? 0).toFixed(2)}` },
+                { label: 'Category', value: showDetailModal.invoice_category?.replace('_', ' ') || 'General' },
+                { label: 'Invoice Date', value: showDetailModal.invoice_date ? new Date(showDetailModal.invoice_date).toLocaleDateString() : 'N/A' },
+                { label: 'Due Date', value: showDetailModal.due_date ? new Date(showDetailModal.due_date).toLocaleDateString() : 'N/A' },
+                { label: 'Created', value: new Date(showDetailModal.created_at).toLocaleString() },
+              ].map((item, i) => (
+                <div key={i} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
+                  <span className="text-sm text-slate-500">{item.label}</span>
+                  <span className="text-sm font-semibold text-slate-900 capitalize">{item.value}</span>
+                </div>
+              ))}
+              {showDetailModal.notes && (
+                <div className="p-3 bg-slate-50 rounded-xl mt-4">
+                  <p className="text-xs text-slate-500 mb-1">Notes</p>
+                  <p className="text-sm text-slate-700">{showDetailModal.notes}</p>
+                </div>
+              )}
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setShowDetailModal(null)} className="flex-1 btn btn-secondary">Close</button>
+              {canApprove && showDetailModal.status === 'pending_approval' && (
+                <button onClick={() => { handleApprove(showDetailModal.id); setShowDetailModal(null); }} className="flex-1 btn btn-success">
+                  <CheckCircle className="w-4 h-4" />
+                  Approve
+                </button>
+              )}
+              {canManageInvoices && showDetailModal.status === 'approved' && (
+                <button onClick={() => { handleMarkAsSent(showDetailModal.id); setShowDetailModal(null); }} className="flex-1 btn btn-primary">
+                  <Send className="w-4 h-4" />
+                  Mark Sent
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

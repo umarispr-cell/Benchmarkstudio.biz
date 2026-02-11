@@ -3,7 +3,17 @@ import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/store';
 import { userService } from '../../services';
 import type { User } from '../../types';
-import { Users, Plus, Search, Edit, Trash2, UserCheck, UserX, Activity, Shield, Building, ArrowRight, Crown, Briefcase, Palette, CheckCircle } from 'lucide-react';
+import { Users, Plus, Search, Edit, Trash2, UserCheck, UserX, Activity, Shield, Building, ArrowRight, Crown, Briefcase, Palette, CheckCircle, X } from 'lucide-react';
+
+const emptyUserForm = {
+  name: '',
+  email: '',
+  password: '',
+  role: 'worker',
+  country: 'UK',
+  department: 'floor_plan',
+  layer: '',
+};
 
 const UserManagement = () => {
   const { user: currentUser } = useSelector((state: RootState) => state.auth);
@@ -12,6 +22,12 @@ const UserManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRole, setSelectedRole] = useState<string>('all');
   const [selectedCountry, setSelectedCountry] = useState<string>('all');
+  const [showModal, setShowModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [formData, setFormData] = useState(emptyUserForm);
+  const [saving, setSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [formError, setFormError] = useState('');
 
   useEffect(() => {
     loadUsers();
@@ -58,6 +74,75 @@ const UserManagement = () => {
 
   const canManageUsers = ['ceo', 'director', 'operations_manager'].includes(currentUser?.role || '');
 
+  const openCreateModal = () => {
+    setEditingUser(null);
+    setFormData(emptyUserForm);
+    setFormError('');
+    setShowModal(true);
+  };
+
+  const openEditModal = (u: User) => {
+    setEditingUser(u);
+    setFormData({
+      name: u.name,
+      email: u.email,
+      password: '',
+      role: u.role,
+      country: u.country || 'UK',
+      department: u.department || 'floor_plan',
+      layer: u.layer || '',
+    });
+    setFormError('');
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
+    if (!formData.name || !formData.email) {
+      setFormError('Name and email are required.');
+      return;
+    }
+    if (!editingUser && !formData.password) {
+      setFormError('Password is required for new users.');
+      return;
+    }
+    try {
+      setSaving(true);
+      setFormError('');
+      if (editingUser) {
+        const updateData: any = { ...formData };
+        if (!updateData.password) delete updateData.password;
+        await userService.update(editingUser.id, updateData);
+      } else {
+        await userService.create(formData as any);
+      }
+      setShowModal(false);
+      loadUsers();
+    } catch (error: any) {
+      setFormError(error.response?.data?.message || 'Failed to save user.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await userService.delete(id);
+      setDeleteConfirm(null);
+      loadUsers();
+    } catch (error) {
+      console.error('Error deleting user:', error);
+    }
+  };
+
+  const handleToggleActive = async (u: User) => {
+    try {
+      await userService.update(u.id, { is_active: !u.is_active } as any);
+      loadUsers();
+    } catch (error) {
+      console.error('Error toggling user status:', error);
+    }
+  };
+
   const filteredUsers = users.filter(user => 
     searchTerm === '' || 
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -79,7 +164,7 @@ const UserManagement = () => {
           <p className="text-slate-500 mt-2">Manage staff members and permissions</p>
         </div>
         {canManageUsers && (
-          <button className="btn btn-primary group">
+          <button onClick={openCreateModal} className="btn btn-primary group">
             <Plus className="w-4 h-4" />
             Add User
             <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -231,6 +316,7 @@ const UserManagement = () => {
                     {canManageUsers && (
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
+                          onClick={() => handleToggleActive(user)}
                           className="p-2.5 hover:bg-slate-100 rounded-xl transition-all hover:scale-110"
                           title={user.is_active ? 'Deactivate' : 'Activate'}
                           aria-label={user.is_active ? 'Deactivate user' : 'Activate user'}
@@ -241,10 +327,10 @@ const UserManagement = () => {
                             <UserCheck className="w-4 h-4 text-emerald-600" />
                           )}
                         </button>
-                        <button className="p-2.5 hover:bg-slate-100 rounded-xl transition-all hover:scale-110" aria-label="Edit user">
+                        <button onClick={() => openEditModal(user)} className="p-2.5 hover:bg-slate-100 rounded-xl transition-all hover:scale-110" aria-label="Edit user">
                           <Edit className="w-4 h-4 text-slate-600" />
                         </button>
-                        <button className="p-2.5 hover:bg-rose-100 rounded-xl transition-all hover:scale-110" aria-label="Delete user">
+                        <button onClick={() => setDeleteConfirm(user.id)} className="p-2.5 hover:bg-rose-100 rounded-xl transition-all hover:scale-110" aria-label="Delete user">
                           <Trash2 className="w-4 h-4 text-rose-500" />
                         </button>
                       </div>
@@ -264,7 +350,7 @@ const UserManagement = () => {
                 <h3 className="text-xl font-bold text-slate-900 mb-2">No users found</h3>
                 <p className="text-slate-500 max-w-md mx-auto">Try adjusting your search filters or add a new team member.</p>
                 {canManageUsers && (
-                  <button className="btn btn-primary mt-6">
+                  <button onClick={openCreateModal} className="btn btn-primary mt-6">
                     <Plus className="w-4 h-4" />
                     Add First User
                   </button>
@@ -272,6 +358,108 @@ const UserManagement = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Create/Edit User Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto animate-fade-in">
+            <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-lg">
+              <X className="h-5 w-5 text-slate-400" />
+            </button>
+            <h2 className="text-xl font-bold text-slate-900 mb-6">
+              {editingUser ? 'Edit User' : 'Add New User'}
+            </h2>
+            {formError && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-600">{formError}</div>
+            )}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Full Name *</label>
+                <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="input" placeholder="Enter full name" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Email *</label>
+                <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="input" placeholder="user@benchmark.com" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Password {editingUser ? '(leave blank to keep current)' : '*'}
+                </label>
+                <input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="input" placeholder={editingUser ? '••••••••' : 'Enter password'} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
+                  <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="input">
+                    <option value="worker">Worker</option>
+                    <option value="designer">Designer</option>
+                    <option value="qa">QA</option>
+                    <option value="operations_manager">Operations Manager</option>
+                    <option value="accounts_manager">Accounts Manager</option>
+                    <option value="director">Director</option>
+                    <option value="ceo">CEO</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Country</label>
+                  <select value={formData.country} onChange={e => setFormData({...formData, country: e.target.value})} className="input">
+                    <option value="UK">UK</option>
+                    <option value="Australia">Australia</option>
+                    <option value="Canada">Canada</option>
+                    <option value="USA">USA</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Department</label>
+                  <select value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} className="input">
+                    <option value="floor_plan">Floor Plan</option>
+                    <option value="photos_enhancement">Photos Enhancement</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Layer</label>
+                  <select value={formData.layer} onChange={e => setFormData({...formData, layer: e.target.value})} className="input">
+                    <option value="">None</option>
+                    <option value="drawer">Drawer</option>
+                    <option value="checker">Checker</option>
+                    <option value="qa">QA</option>
+                    <option value="designer">Designer</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setShowModal(false)} className="flex-1 btn btn-secondary">Cancel</button>
+              <button onClick={handleSave} disabled={saving} className="flex-1 btn btn-primary">
+                {saving ? 'Saving...' : editingUser ? 'Update User' : 'Create User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-fade-in">
+            <div className="text-center">
+              <div className="w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-8 h-8 text-rose-500" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Delete User?</h3>
+              <p className="text-slate-500 text-sm">This will permanently remove this user and all their data.</p>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setDeleteConfirm(null)} className="flex-1 btn btn-secondary">Cancel</button>
+              <button onClick={() => handleDelete(deleteConfirm)} className="flex-1 px-4 py-2.5 bg-rose-600 text-white rounded-xl font-medium hover:bg-rose-700 transition-colors">Delete</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import type { RootState } from '../../store/store';
-import { dashboardService } from '../../services';
+import { dashboardService, workflowService } from '../../services';
 import { ClipboardList, CheckCircle2, Clock, AlertCircle, TrendingUp, Play, ArrowRight, Timer, Tag, Hash, Sparkles, Zap, Target } from 'lucide-react';
 
 const WorkerDashboard = () => {
+  const navigate = useNavigate();
   const { user } = useSelector((state: RootState) => state.auth);
   const [currentOrder, setCurrentOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [completing, setCompleting] = useState(false);
+  const [showOrderDetail, setShowOrderDetail] = useState(false);
   const [stats, setStats] = useState({
     assigned: 0,
     in_progress: 0,
@@ -40,6 +44,19 @@ const WorkerDashboard = () => {
       console.error('Error loading data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCompleteOrder = async () => {
+    if (!currentOrder) return;
+    try {
+      setCompleting(true);
+      await workflowService.completeOrder(currentOrder.id);
+      await loadData();
+    } catch (error) {
+      console.error('Error completing order:', error);
+    } finally {
+      setCompleting(false);
     }
   };
 
@@ -205,13 +222,13 @@ const WorkerDashboard = () => {
             </div>
 
             <div className="mt-6 pt-6 border-t border-slate-100 flex gap-3">
-              <button className="btn btn-primary group">
+              <button onClick={() => setShowOrderDetail(true)} className="btn btn-primary group">
                 View Order Details
                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
               </button>
-              <button className="btn btn-success">
+              <button onClick={handleCompleteOrder} disabled={completing} className="btn btn-success">
                 <CheckCircle2 className="w-4 h-4" />
-                Mark Complete
+                {completing ? 'Completing...' : 'Mark Complete'}
               </button>
             </div>
           </div>
@@ -228,10 +245,52 @@ const WorkerDashboard = () => {
               <br />
               New orders will be automatically assigned from the queue.
             </p>
-            <button className="btn btn-secondary mt-6">
+            <button onClick={() => navigate('/work')} className="btn btn-secondary mt-6">
               <Clock className="w-4 h-4" />
               Check Queue
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Order Detail Modal */}
+      {showOrderDetail && currentOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowOrderDetail(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-fade-in">
+            <button onClick={() => setShowOrderDetail(false)} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <AlertCircle className="h-5 w-5 text-slate-400" />
+            </button>
+            <h2 className="text-xl font-bold text-slate-900 mb-6">Order Details</h2>
+            <div className="space-y-4">
+              {[
+                { label: 'Order Number', value: currentOrder.order_number },
+                { label: 'Client Reference', value: currentOrder.client_reference },
+                { label: 'Priority', value: currentOrder.priority },
+                { label: 'Status', value: currentOrder.status?.replace('_', ' ') },
+                { label: 'Layer', value: currentOrder.current_layer },
+                { label: 'Started At', value: currentOrder.started_at ? new Date(currentOrder.started_at).toLocaleString() : 'N/A' },
+                { label: 'Due Date', value: currentOrder.due_date ? new Date(currentOrder.due_date).toLocaleDateString() : 'N/A' },
+              ].map((item, i) => (
+                <div key={i} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
+                  <span className="text-sm text-slate-500">{item.label}</span>
+                  <span className="text-sm font-semibold text-slate-900 capitalize">{item.value || 'N/A'}</span>
+                </div>
+              ))}
+              {currentOrder.notes && (
+                <div className="p-3 bg-slate-50 rounded-xl">
+                  <p className="text-xs text-slate-500 mb-1">Notes</p>
+                  <p className="text-sm text-slate-700">{currentOrder.notes}</p>
+                </div>
+              )}
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setShowOrderDetail(false)} className="flex-1 btn btn-secondary">Close</button>
+              <button onClick={() => { handleCompleteOrder(); setShowOrderDetail(false); }} disabled={completing} className="flex-1 btn btn-success">
+                <CheckCircle2 className="w-4 h-4" />
+                {completing ? 'Completing...' : 'Mark Complete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

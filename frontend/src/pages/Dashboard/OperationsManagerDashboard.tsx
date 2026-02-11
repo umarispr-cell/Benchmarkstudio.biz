@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import type { RootState } from '../../store/store';
 import { projectService } from '../../services';
 import { FolderKanban, Users, Clock, CheckCircle, ArrowRight, Building, Eye, Sparkles } from 'lucide-react';
 
 const OperationsManagerDashboard = () => {
+  const navigate = useNavigate();
   const { user } = useSelector((state: RootState) => state.auth);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<any[]>([]);
@@ -91,7 +93,7 @@ const OperationsManagerDashboard = () => {
                   <h3 className="text-xl font-bold text-slate-900">My Projects</h3>
                   <p className="text-slate-500 text-sm mt-1">Projects assigned to your region</p>
                 </div>
-                <button className="btn btn-secondary">
+                <button onClick={() => navigate('/projects')} className="btn btn-secondary">
                   View All
                   <ArrowRight className="w-4 h-4" />
                 </button>
@@ -165,7 +167,7 @@ const OperationsManagerDashboard = () => {
                           </span>
                         </td>
                         <td className="py-4 px-6">
-                          <button className="btn btn-ghost opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => navigate('/projects')} className="btn btn-ghost opacity-0 group-hover:opacity-100 transition-opacity">
                             <Eye className="w-4 h-4" />
                             View
                           </button>

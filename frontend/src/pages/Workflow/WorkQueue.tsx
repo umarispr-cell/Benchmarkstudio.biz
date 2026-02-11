@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/store';
-import { workflowService } from '../../services';
+import { workflowService, userService } from '../../services';
 import type { Order } from '../../types';
-import { Clock, Play, CheckCircle, AlertCircle, User, Tag, RefreshCw, Layers, Timer, ArrowRight, Zap, ListChecks } from 'lucide-react';
+import { Clock, Play, CheckCircle, AlertCircle, User, Tag, RefreshCw, Layers, Timer, ArrowRight, Zap, ListChecks, X, UserPlus } from 'lucide-react';
 
 const WorkQueue = () => {
   const { user } = useSelector((state: RootState) => state.auth);
@@ -11,6 +11,9 @@ const WorkQueue = () => {
   const [loading, setLoading] = useState(true);
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedPriority, setSelectedPriority] = useState<string>('all');
+  const [manageOrder, setManageOrder] = useState<Order | null>(null);
+  const [workers, setWorkers] = useState<any[]>([]);
+  const [assignUserId, setAssignUserId] = useState<number>(0);
 
   useEffect(() => {
     loadOrders();
@@ -77,6 +80,28 @@ const WorkQueue = () => {
 
   const canManageOrders = ['ceo', 'director', 'operations_manager'].includes(user?.role || '');
   const isWorker = ['worker', 'designer', 'qa'].includes(user?.role || '');
+
+  const openManageModal = async (order: Order) => {
+    setManageOrder(order);
+    setAssignUserId(0);
+    if (workers.length === 0) {
+      try {
+        const res = await userService.getAll({ role: 'worker,designer,qa' } as any);
+        setWorkers(res.data);
+      } catch (e) { /* ignore */ }
+    }
+  };
+
+  const handleAssignOrder = async () => {
+    if (!manageOrder || !assignUserId) return;
+    try {
+      await workflowService.assignOrder(manageOrder.id, assignUserId);
+      setManageOrder(null);
+      loadOrders();
+    } catch (error) {
+      console.error('Error assigning order:', error);
+    }
+  };
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -256,7 +281,7 @@ const WorkQueue = () => {
                       )}
                       
                       {canManageOrders && (
-                        <button className="btn btn-secondary">
+                        <button onClick={() => openManageModal(order)} className="btn btn-secondary">
                           Manage
                         </button>
                       )}
@@ -278,6 +303,73 @@ const WorkQueue = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Manage Order Modal */}
+      {manageOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setManageOrder(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-fade-in">
+            <button onClick={() => setManageOrder(null)} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-lg">
+              <X className="h-5 w-5 text-slate-400" />
+            </button>
+            <h2 className="text-xl font-bold text-slate-900 mb-6">Manage Order #{manageOrder.id}</h2>
+            <div className="space-y-3 mb-6">
+              {[
+                { label: 'Status', value: manageOrder.status?.replace('_', ' ') },
+                { label: 'Priority', value: manageOrder.priority },
+                { label: 'Layer', value: manageOrder.current_layer || 'N/A' },
+                { label: 'Client Ref', value: manageOrder.client_reference || 'N/A' },
+                { label: 'Assigned', value: manageOrder.assigned_to ? 'Yes' : 'Unassigned' },
+                { label: 'Created', value: new Date(manageOrder.created_at).toLocaleDateString() },
+              ].map((item, i) => (
+                <div key={i} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
+                  <span className="text-sm text-slate-500">{item.label}</span>
+                  <span className="text-sm font-semibold text-slate-900 capitalize">{item.value}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Assign Section */}
+            <div className="bg-slate-50 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <UserPlus className="w-4 h-4 text-violet-500" />
+                <span className="font-medium text-slate-700 text-sm">Assign to Worker</span>
+              </div>
+              <div className="flex gap-2">
+                <select
+                  value={assignUserId}
+                  onChange={(e) => setAssignUserId(Number(e.target.value))}
+                  className="input flex-1"
+                >
+                  <option value={0}>Select worker...</option>
+                  {workers.map((w: any) => (
+                    <option key={w.id} value={w.id}>{w.name} ({w.role})</option>
+                  ))}
+                </select>
+                <button onClick={handleAssignOrder} disabled={!assignUserId} className="btn btn-primary disabled:opacity-50">
+                  Assign
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setManageOrder(null)} className="flex-1 btn btn-secondary">Close</button>
+              {manageOrder.status === 'pending' && (
+                <button onClick={() => { handleStartOrder(manageOrder.id); setManageOrder(null); }} className="flex-1 btn btn-primary">
+                  <Play className="w-4 h-4" />
+                  Start Order
+                </button>
+              )}
+              {manageOrder.status === 'in-progress' && (
+                <button onClick={() => { handleCompleteOrder(manageOrder.id); setManageOrder(null); }} className="flex-1 btn btn-success">
+                  <CheckCircle className="w-4 h-4" />
+                  Complete
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

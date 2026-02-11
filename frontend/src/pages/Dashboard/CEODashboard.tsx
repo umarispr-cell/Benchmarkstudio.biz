@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import type { RootState } from '../../store/store';
 import { dashboardService } from '../../services';
 import {
@@ -26,6 +27,7 @@ interface Stats {
 }
 
 const CEODashboard = () => {
+  const navigate = useNavigate();
   const { user } = useSelector((state: RootState) => state.auth);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -213,7 +215,7 @@ const CEODashboard = () => {
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900">Regional Performance</h3>
                 </div>
-                <button className="text-sm text-teal-600 font-medium hover:text-teal-700">View All</button>
+                <button onClick={() => navigate('/projects')} className="text-sm text-teal-600 font-medium hover:text-teal-700">View All</button>
               </div>
               
               <div className="space-y-4">
@@ -263,7 +265,7 @@ const CEODashboard = () => {
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900">Recent Activity</h3>
               </div>
-              <button className="text-sm text-teal-600 font-medium hover:text-teal-700">View All</button>
+              <button onClick={() => navigate('/projects')} className="text-sm text-teal-600 font-medium hover:text-teal-700">View All</button>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

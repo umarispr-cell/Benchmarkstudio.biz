@@ -3,7 +3,27 @@ import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/store';
 import { projectService } from '../../services';
 import type { Project } from '../../types';
-import { FolderKanban, Plus, Search, Edit, Trash2, Users, BarChart3, TrendingUp, MapPin, Building, ArrowRight } from 'lucide-react';
+import { FolderKanban, Plus, Search, Edit, Trash2, Users, BarChart3, TrendingUp, MapPin, Building, ArrowRight, X } from 'lucide-react';
+
+const emptyForm: {
+  name: string;
+  code: string;
+  client_name: string;
+  country: string;
+  department: string;
+  status: string;
+  description: string;
+  workflow_layers: string[];
+} = {
+  name: '',
+  code: '',
+  client_name: '',
+  country: 'UK',
+  department: 'floor_plan',
+  status: 'active',
+  description: '',
+  workflow_layers: ['drawer', 'checker', 'qa'],
+};
 
 const ProjectManagement = () => {
   const { user } = useSelector((state: RootState) => state.auth);
@@ -12,6 +32,16 @@ const ProjectManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCountry, setSelectedCountry] = useState<string>('all');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
+  const [showModal, setShowModal] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [formData, setFormData] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [showStatsModal, setShowStatsModal] = useState<Project | null>(null);
+  const [showTeamsModal, setShowTeamsModal] = useState<Project | null>(null);
+  const [projectStats, setProjectStats] = useState<any>(null);
+  const [projectTeams, setProjectTeams] = useState<any[]>([]);
+  const [formError, setFormError] = useState('');
 
   useEffect(() => {
     loadProjects();
@@ -40,6 +70,81 @@ const ProjectManagement = () => {
 
   const canManageProjects = ['ceo', 'director', 'operations_manager'].includes(user?.role || '');
 
+  const openCreateModal = () => {
+    setEditingProject(null);
+    setFormData(emptyForm);
+    setFormError('');
+    setShowModal(true);
+  };
+
+  const openEditModal = (project: Project) => {
+    setEditingProject(project);
+    setFormData({
+      name: project.name,
+      code: project.code,
+      client_name: project.client_name,
+      country: project.country,
+      department: project.department as 'floor_plan' | 'photos_enhancement',
+      status: project.status as 'active' | 'inactive' | 'completed',
+      description: project.description || '',
+      workflow_layers: project.workflow_layers || ['drawer', 'checker', 'qa'],
+    });
+    setFormError('');
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
+    if (!formData.name || !formData.code || !formData.client_name) {
+      setFormError('Name, code, and client name are required.');
+      return;
+    }
+    try {
+      setSaving(true);
+      setFormError('');
+      if (editingProject) {
+        await projectService.update(editingProject.id, formData as any);
+      } else {
+        await projectService.create(formData as any);
+      }
+      setShowModal(false);
+      loadProjects();
+    } catch (error: any) {
+      setFormError(error.response?.data?.message || 'Failed to save project.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await projectService.delete(id);
+      setDeleteConfirm(null);
+      loadProjects();
+    } catch (error) {
+      console.error('Error deleting project:', error);
+    }
+  };
+
+  const handleViewStats = async (project: Project) => {
+    setShowStatsModal(project);
+    try {
+      const stats = await projectService.getStatistics(project.id);
+      setProjectStats(stats);
+    } catch (error) {
+      setProjectStats(null);
+    }
+  };
+
+  const handleViewTeams = async (project: Project) => {
+    setShowTeamsModal(project);
+    try {
+      const teams = await projectService.getTeams(project.id);
+      setProjectTeams(teams);
+    } catch (error) {
+      setProjectTeams([]);
+    }
+  };
+
   const filteredProjects = projects.filter(project => 
     searchTerm === '' || 
     project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -67,7 +172,7 @@ const ProjectManagement = () => {
           <p className="text-slate-500 mt-2">Manage and monitor projects across all regions</p>
         </div>
         {canManageProjects && (
-          <button className="btn btn-primary group">
+          <button onClick={openCreateModal} className="btn btn-primary group">
             <Plus className="w-4 h-4" />
             New Project
             <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -197,16 +302,16 @@ const ProjectManagement = () => {
 
                   {canManageProjects && (
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-2.5 hover:bg-slate-100 rounded-xl transition-all hover:scale-110" aria-label="View statistics">
+                      <button onClick={() => handleViewStats(project)} className="p-2.5 hover:bg-slate-100 rounded-xl transition-all hover:scale-110" aria-label="View statistics">
                         <BarChart3 className="w-4 h-4 text-slate-600" />
                       </button>
-                      <button className="p-2.5 hover:bg-slate-100 rounded-xl transition-all hover:scale-110" aria-label="Manage teams">
+                      <button onClick={() => handleViewTeams(project)} className="p-2.5 hover:bg-slate-100 rounded-xl transition-all hover:scale-110" aria-label="Manage teams">
                         <Users className="w-4 h-4 text-slate-600" />
                       </button>
-                      <button className="p-2.5 hover:bg-slate-100 rounded-xl transition-all hover:scale-110" aria-label="Edit project">
+                      <button onClick={() => openEditModal(project)} className="p-2.5 hover:bg-slate-100 rounded-xl transition-all hover:scale-110" aria-label="Edit project">
                         <Edit className="w-4 h-4 text-slate-600" />
                       </button>
-                      <button className="p-2.5 hover:bg-rose-100 rounded-xl transition-all hover:scale-110" aria-label="Delete project">
+                      <button onClick={() => setDeleteConfirm(project.id)} className="p-2.5 hover:bg-rose-100 rounded-xl transition-all hover:scale-110" aria-label="Delete project">
                         <Trash2 className="w-4 h-4 text-rose-500" />
                       </button>
                     </div>
@@ -258,7 +363,7 @@ const ProjectManagement = () => {
                 <h3 className="text-xl font-bold text-slate-900 mb-2">No projects found</h3>
                 <p className="text-slate-500 max-w-md mx-auto">Try adjusting your search filters or create a new project to get started.</p>
                 {canManageProjects && (
-                  <button className="btn btn-primary mt-6">
+                  <button onClick={openCreateModal} className="btn btn-primary mt-6">
                     <Plus className="w-4 h-4" />
                     Create First Project
                   </button>
@@ -266,6 +371,150 @@ const ProjectManagement = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto animate-fade-in">
+            <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-lg">
+              <X className="h-5 w-5 text-slate-400" />
+            </button>
+            <h2 className="text-xl font-bold text-slate-900 mb-6">
+              {editingProject ? 'Edit Project' : 'Create New Project'}
+            </h2>
+            {formError && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-600">{formError}</div>
+            )}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Project Name *</label>
+                <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="input" placeholder="Enter project name" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Project Code *</label>
+                <input type="text" value={formData.code} onChange={e => setFormData({...formData, code: e.target.value})} className="input" placeholder="e.g. PRJ-001" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Client Name *</label>
+                <input type="text" value={formData.client_name} onChange={e => setFormData({...formData, client_name: e.target.value})} className="input" placeholder="Enter client name" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Country</label>
+                  <select value={formData.country} onChange={e => setFormData({...formData, country: e.target.value})} className="input">
+                    <option value="UK">UK</option>
+                    <option value="Australia">Australia</option>
+                    <option value="Canada">Canada</option>
+                    <option value="USA">USA</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Department</label>
+                  <select value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} className="input">
+                    <option value="floor_plan">Floor Plan</option>
+                    <option value="photos_enhancement">Photos Enhancement</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                <select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="input">
+                  <option value="active">Active</option>
+                  <option value="paused">Paused</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="input" rows={3} placeholder="Optional project description" />
+              </div>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setShowModal(false)} className="flex-1 btn btn-secondary">Cancel</button>
+              <button onClick={handleSave} disabled={saving} className="flex-1 btn btn-primary">
+                {saving ? 'Saving...' : editingProject ? 'Update Project' : 'Create Project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-fade-in">
+            <div className="text-center">
+              <div className="w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-8 h-8 text-rose-500" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Delete Project?</h3>
+              <p className="text-slate-500 text-sm">This action cannot be undone. All associated data will be permanently removed.</p>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setDeleteConfirm(null)} className="flex-1 btn btn-secondary">Cancel</button>
+              <button onClick={() => handleDelete(deleteConfirm)} className="flex-1 px-4 py-2.5 bg-rose-600 text-white rounded-xl font-medium hover:bg-rose-700 transition-colors">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stats Modal */}
+      {showStatsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => { setShowStatsModal(null); setProjectStats(null); }} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fade-in">
+            <button onClick={() => { setShowStatsModal(null); setProjectStats(null); }} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-lg">
+              <X className="h-5 w-5 text-slate-400" />
+            </button>
+            <h2 className="text-xl font-bold text-slate-900 mb-4">
+              <BarChart3 className="w-5 h-5 inline mr-2 text-teal-500" />
+              {showStatsModal.name} - Statistics
+            </h2>
+            {projectStats ? (
+              <div className="grid grid-cols-2 gap-4">
+                {Object.entries(projectStats.data || projectStats).map(([key, value]: [string, any]) => (
+                  <div key={key} className="bg-slate-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-slate-900">{typeof value === 'number' ? value : JSON.stringify(value)}</p>
+                    <p className="text-xs text-slate-500 mt-1 capitalize">{key.replace(/_/g, ' ')}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-500">Loading statistics...</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Teams Modal */}
+      {showTeamsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => { setShowTeamsModal(null); setProjectTeams([]); }} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fade-in">
+            <button onClick={() => { setShowTeamsModal(null); setProjectTeams([]); }} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-lg">
+              <X className="h-5 w-5 text-slate-400" />
+            </button>
+            <h2 className="text-xl font-bold text-slate-900 mb-4">
+              <Users className="w-5 h-5 inline mr-2 text-teal-500" />
+              {showTeamsModal.name} - Teams
+            </h2>
+            {projectTeams.length > 0 ? (
+              <div className="space-y-3">
+                {projectTeams.map((team: any, i: number) => (
+                  <div key={i} className="bg-slate-50 rounded-xl p-4">
+                    <p className="font-semibold text-slate-900">{team.name}</p>
+                    <p className="text-sm text-slate-500">{team.members_count || team.members?.length || 0} members</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-500">No teams found for this project.</div>
+            )}
+          </div>
         </div>
       )}
     </div>
