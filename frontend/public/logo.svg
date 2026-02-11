@@ -1,0 +1,11 @@
+<svg viewBox="0 0 320 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- K shape - Orange vertical bar -->
+  <path d="M10 5 L10 95 L25 95 L25 5 Z" fill="#C45C26"/>
+  
+  <!-- K shape - Teal triangles -->
+  <polygon points="25,50 70,5 70,50" fill="#2AA7A0"/>
+  <polygon points="25,50 70,50 70,95" fill="#2AA7A0"/>
+  
+  <!-- BENCHMARK text -->
+  <text x="90" y="65" font-family="Plus Jakarta Sans, system-ui, sans-serif" font-size="42" font-weight="400" letter-spacing="2" fill="#2AA7A0">BENCHMARK</text>
+</svg>

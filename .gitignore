@@ -1,0 +1,30 @@
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment (sensitive data)
+.env
+.env.local
+.env.*.local
+
+# Compiled output
+dist/
+build/
+*.compiled
+
+# Backup files
+*.backup
+*.bak
+
+# Database files (keep sample, ignore real)
+backend/database/database.sqlite
