@@ -73,9 +73,9 @@ const Sidebar = () => {
   );
 
   return (
-    <div className="w-72 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-800 flex flex-col shadow-2xl">
+    <div className="w-60 bg-slate-900 flex flex-col">
       {/* Logo Section */}
-      <div className="h-20 flex items-center px-6 border-b border-slate-700/50">
+      <div className="h-12 flex items-center px-4 border-b border-slate-800">
         <div className="flex items-center gap-3">
           <img src="/logo.svg" alt="Benchmark" className="h-10 w-auto" />
           <div className="relative">
@@ -85,9 +85,9 @@ const Sidebar = () => {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-        <div className="px-3 mb-4">
-          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Main Menu</span>
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+        <div className="px-3 mb-3">
+          <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-widest">Menu</span>
         </div>
         {filteredNavigation.map((item) => {
           const isActive = location.pathname.startsWith(item.href);
@@ -98,7 +98,7 @@ const Sidebar = () => {
               key={item.name}
               to={item.href}
               className={`
-                group relative flex items-center px-4 py-3.5 text-sm font-medium rounded-xl transition-all duration-200
+                group relative flex items-center px-3 py-2.5 text-xs font-medium rounded-lg transition-all duration-200
                 ${isActive
                   ? 'bg-gradient-to-r from-teal-500/20 to-cyan-500/10 text-white'
                   : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -106,47 +106,36 @@ const Sidebar = () => {
               `}
             >
               {isActive && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-teal-400 to-cyan-500 rounded-full" />
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-teal-400 rounded-full" />
               )}
               <div className={`
-                flex items-center justify-center w-9 h-9 rounded-lg mr-3 transition-all duration-200
+                flex items-center justify-center w-7 h-7 rounded-md mr-2.5 transition-all duration-200
                 ${isActive 
-                  ? 'bg-gradient-to-br from-teal-500 to-cyan-600 text-white shadow-lg shadow-teal-500/30' 
-                  : 'bg-slate-800/50 text-slate-400 group-hover:bg-slate-700/50 group-hover:text-white'
+                  ? 'bg-teal-500/20 text-teal-400' 
+                  : 'text-slate-400 group-hover:text-slate-300'
                 }
               `}>
-                <Icon className="h-[18px] w-[18px]" />
+                <Icon className="h-4 w-4" />
               </div>
               <span className="flex-1">{item.name}</span>
-              <ChevronRight className={`h-4 w-4 transition-all duration-200 ${isActive ? 'text-teal-400 opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+              <ChevronRight className={`h-3 w-3 transition-all duration-200 ${isActive ? 'text-teal-400 opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
             </Link>
           );
         })}
       </nav>
 
       {/* User Profile Card */}
-      <div className="p-4 m-4 mt-0 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-800/50 border border-slate-700/50">
-        <div className="flex items-center gap-3">
+      <div className="p-3 mx-3 mb-3 rounded-lg bg-slate-800/60">
+        <div className="flex items-center gap-2.5">
           <div className="relative">
-            <div className="avatar avatar-lg bg-gradient-to-br from-teal-400 to-cyan-500">
+            <div className="w-7 h-7 rounded-md bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white text-xs font-bold">
               {user?.name?.charAt(0).toUpperCase()}
             </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-slate-800" />
+            <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full border-[1.5px] border-slate-900" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
-            <p className="text-xs text-slate-400 truncate capitalize">
-              {user?.role?.replace('_', ' ')}
-            </p>
-          </div>
-        </div>
-        <div className="mt-3 pt-3 border-t border-slate-700/50">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-400">Status</span>
-            <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-              Active
-            </span>
+            <p className="text-[11px] font-semibold text-white truncate">{user?.name}</p>
+            <p className="text-[10px] text-slate-400 truncate capitalize">{user?.role?.replace('_', ' ')}</p>
           </div>
         </div>
       </div>
