@@ -1,19 +1,58 @@
-// Auth Types
+// ═══════════════════════════════════════════
+// WORKFLOW STATES (must match backend StateMachine)
+// ═══════════════════════════════════════════
+
+export const FP_STATES = [
+  'RECEIVED', 'QUEUED_DRAW', 'IN_DRAW', 'SUBMITTED_DRAW',
+  'QUEUED_CHECK', 'IN_CHECK', 'REJECTED_BY_CHECK', 'SUBMITTED_CHECK',
+  'QUEUED_QA', 'IN_QA', 'REJECTED_BY_QA', 'APPROVED_QA',
+  'DELIVERED', 'ON_HOLD', 'CANCELLED',
+] as const;
+
+export const PH_STATES = [
+  'RECEIVED', 'QUEUED_DESIGN', 'IN_DESIGN', 'SUBMITTED_DESIGN',
+  'QUEUED_QA', 'IN_QA', 'REJECTED_BY_QA', 'APPROVED_QA',
+  'DELIVERED', 'ON_HOLD', 'CANCELLED',
+] as const;
+
+export type WorkflowState = typeof FP_STATES[number] | typeof PH_STATES[number];
+export type WorkflowType = 'FP_3_LAYER' | 'PH_2_LAYER';
+
+export const INVOICE_STATUSES = ['draft', 'prepared', 'approved', 'issued', 'sent'] as const;
+export type InvoiceStatus = typeof INVOICE_STATUSES[number];
+
+export const REJECTION_CODES = ['quality', 'incomplete', 'wrong_specs', 'rework', 'formatting', 'missing_info'] as const;
+export type RejectionCode = typeof REJECTION_CODES[number];
+
+export const ROLES = ['ceo', 'director', 'operations_manager', 'qa', 'checker', 'drawer', 'designer', 'admin', 'accounts_manager'] as const;
+export type UserRole = typeof ROLES[number];
+
+export const PRODUCTION_ROLES: UserRole[] = ['drawer', 'checker', 'qa', 'designer'];
+export const MANAGEMENT_ROLES: UserRole[] = ['ceo', 'director', 'operations_manager', 'admin'];
+
+// ═══════════════════════════════════════════
+// CORE ENTITIES
+// ═══════════════════════════════════════════
+
 export interface User {
   id: number;
   name: string;
   email: string;
-  role: 'ceo' | 'director' | 'operations_manager' | 'qa' | 'checker' | 'drawer' | 'designer' | 'accounts_manager';
+  role: UserRole;
   country: string;
-  department: 'floor_plan' | 'photos_enhancement';
-  project_id?: number;
-  team_id?: number;
-  layer?: 'drawer' | 'checker' | 'qa' | 'designer';
+  department: string;
+  project_id: number | null;
+  team_id: number | null;
+  layer: string | null;
   is_active: boolean;
-  last_activity: string;
+  is_absent: boolean;
+  last_activity: string | null;
   inactive_days: number;
-  created_at: string;
-  updated_at: string;
+  wip_count: number;
+  today_completed: number;
+  daily_target: number;
+  shift_start: string | null;
+  shift_end: string | null;
   project?: Project;
   team?: Team;
 }
@@ -26,23 +65,24 @@ export interface LoginCredentials {
 export interface LoginResponse {
   user: User;
   token: string;
+  warning?: string;
 }
 
 export interface SessionCheckResponse {
   valid: boolean;
-  user?: User;
+  reason?: string;
 }
 
-// Project Types
 export interface Project {
   id: number;
   code: string;
   name: string;
   country: string;
-  department: 'floor_plan' | 'photos_enhancement';
+  department: string;
   client_name: string;
-  description?: string;
-  status: 'active' | 'inactive' | 'completed';
+  status: string;
+  workflow_type: WorkflowType;
+  wip_cap: number;
   total_orders: number;
   completed_orders: number;
   pending_orders: number;
@@ -51,38 +91,27 @@ export interface Project {
   total_staff: number;
   active_staff: number;
   workflow_layers: string[];
-  metadata?: Record<string, any>;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string;
-  teams?: Team[];
-  users?: User[];
-  orders?: Order[];
+  sla_config: Record<string, unknown> | null;
+  invoice_categories_config: Record<string, unknown>[] | null;
+  client_portal_config: Record<string, unknown> | null;
+  target_config: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  description?: string;
 }
 
 export interface ProjectInput {
   code: string;
   name: string;
   country: string;
-  department: 'floor_plan' | 'photos_enhancement';
-  client_name: string;
-  status?: 'active' | 'inactive' | 'completed';
-  workflow_layers: string[];
-  metadata?: Record<string, any>;
+  department: string;
+  client_name?: string;
+  status?: string;
+  workflow_type?: WorkflowType;
+  wip_cap?: number;
+  workflow_layers?: string[];
+  metadata?: Record<string, unknown>;
 }
 
-export interface ProjectStatistics {
-  total_orders: number;
-  pending_orders: number;
-  in_progress_orders: number;
-  completed_orders: number;
-  total_teams: number;
-  active_teams: number;
-  total_staff: number;
-  active_staff: number;
-}
-
-// Team Types
 export interface Team {
   id: number;
   project_id: number;
@@ -92,179 +121,109 @@ export interface Team {
   drawer_count: number;
   designer_count: number;
   is_active: boolean;
-  created_at: string;
-  updated_at: string;
-  project?: Project;
-  users?: User[];
+  structure_config: Record<string, unknown> | null;
+  auto_assignment_rules: Record<string, unknown> | null;
 }
 
-// Order Types
 export interface Order {
   id: number;
   order_number: string;
-  title?: string;
   project_id: number;
-  client_reference?: string;
-  current_layer: 'drawer' | 'checker' | 'qa' | 'designer';
-  status: 'pending' | 'in-progress' | 'completed' | 'on-hold';
-  assigned_to?: number;
-  team_id?: number;
+  client_reference: string;
+  current_layer: string;
+  status: string;
+  workflow_state: WorkflowState;
+  workflow_type: WorkflowType;
+  assigned_to: number | null;
+  team_id: number | null;
   priority: 'low' | 'normal' | 'high' | 'urgent';
-  due_date?: string;
   received_at: string;
-  started_at?: string;
-  completed_at?: string;
-  metadata?: Record<string, any>;
-  // Import fields
-  import_source?: 'api' | 'cron' | 'csv' | 'manual';
-  import_log_id?: number;
-  // Rejection fields
-  recheck_count?: number;
-  rejected_by?: number;
-  rejected_at?: string;
-  rejection_reason?: string;
-  rejection_type?: 'quality' | 'incomplete' | 'incorrect' | 'rework' | 'other';
-  checker_self_corrected?: boolean;
-  // Client portal fields
-  client_portal_id?: string;
-  client_portal_synced_at?: string;
+  started_at: string | null;
+  completed_at: string | null;
+  delivered_at: string | null;
+  due_date: string | null;
+  metadata: Record<string, unknown> | null;
+  recheck_count: number;
+  attempt_draw: number;
+  attempt_check: number;
+  attempt_qa: number;
+  is_on_hold: boolean;
+  hold_reason: string | null;
+  rejected_by: number | null;
+  rejected_at: string | null;
+  rejection_reason: string | null;
+  rejection_type: string | null;
   created_at: string;
   updated_at: string;
   project?: Project;
   team?: Team;
   assignedUser?: User;
-  rejected_by_user?: User;
-  workAssignments?: WorkAssignment[];
-  checklists?: OrderChecklist[];
-  importLog?: OrderImportLog;
+  work_items?: WorkItem[];
 }
 
-export interface OrderInput {
-  order_number: string;
-  project_id: number;
-  client_reference?: string;
-  current_layer: 'drawer' | 'checker' | 'qa' | 'designer';
-  status?: 'pending' | 'in-progress' | 'completed' | 'on-hold';
-  assigned_to?: number;
-  team_id?: number;
-  priority?: 'low' | 'normal' | 'high' | 'urgent';
-  received_at: string;
-  metadata?: Record<string, any>;
-}
-
-// Work Assignment Types
-export interface WorkAssignment {
+export interface WorkItem {
   id: number;
   order_id: number;
-  user_id: number;
-  layer: string;
-  assigned_at: string;
-  started_at?: string;
-  completed_at?: string;
-  status: 'assigned' | 'in-progress' | 'completed';
-  created_at: string;
-  updated_at: string;
-  order?: Order;
-  user?: User;
+  project_id: number;
+  stage: string;
+  assigned_user_id: number | null;
+  team_id: number | null;
+  status: string;
+  assigned_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  comments: string | null;
+  rework_reason: string | null;
+  rejection_code: string | null;
+  attempt_number: number;
+  assignedUser?: User;
 }
 
-// Order Import Types
-export interface OrderImportSource {
+export interface MonthLock {
   id: number;
   project_id: number;
-  type: 'api' | 'cron' | 'csv' | 'manual';
-  name: string;
-  api_endpoint?: string;
-  cron_schedule?: string;
-  last_sync_at?: string;
-  orders_synced: number;
-  is_active: boolean;
-  field_mapping?: Record<string, string>;
-  created_at: string;
-  updated_at: string;
-  latestImport?: OrderImportLog;
+  month: number;
+  year: number;
+  is_locked: boolean;
+  locked_by: number | null;
+  locked_at: string | null;
+  unlocked_by: number | null;
+  unlocked_at: string | null;
+  frozen_counts: ProductionCounts | null;
+  lockedByUser?: User;
+  unlockedByUser?: User;
 }
 
-export interface OrderImportLog {
-  id: number;
-  import_source_id: number;
-  imported_by?: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  total_rows: number;
-  orders_imported: number;
-  orders_skipped: number;
-  error_count: number;
-  errors?: Array<{ row?: number; message: string; timestamp?: string }>;
-  file_path?: string;
-  started_at?: string;
-  completed_at?: string;
-  created_at: string;
-  updated_at: string;
-  importSource?: OrderImportSource;
-  importedBy?: User;
+export interface ProductionCounts {
+  received: number;
+  delivered: number;
+  pending: number;
+  stage_completions: Record<string, number>;
+  computed_at: string;
 }
 
-// Checklist Types
-export interface ChecklistTemplate {
-  id: number;
-  project_id: number;
-  layer: 'drawer' | 'checker' | 'qa' | 'designer';
-  title: string;
-  description?: string;
-  sort_order: number;
-  is_required: boolean;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface OrderChecklist {
-  id: number;
-  order_id: number;
-  checklist_template_id: number;
-  completed_by: number;
-  is_checked: boolean;
-  notes?: string;
-  completed_at?: string;
-  created_at: string;
-  updated_at: string;
-  template?: ChecklistTemplate;
-  completedBy?: User;
-}
-
-export interface ChecklistItem {
-  id: number;
-  template_id: number;
-  title: string;
-  description?: string;
-  is_required: boolean;
-  is_checked: boolean;
-  notes?: string;
-  completed_at?: string;
-}
-
-// Invoice Types
 export interface Invoice {
   id: number;
   invoice_number: string;
   project_id: number;
   month: string;
   year: string;
-  service_counts: Record<string, number>;
-  total_amount?: number;
-  status: 'draft' | 'pending_approval' | 'approved' | 'sent' | 'paid';
-  prepared_by: number;
-  approved_by?: number;
-  approved_at?: string;
-  invoice_date?: string;
-  due_date?: string;
-  invoice_category?: string;
-  notes?: string;
+  service_counts: Record<string, number> | null;
+  total_amount: number;
+  status: InvoiceStatus;
+  prepared_by: number | null;
+  approved_by: number | null;
+  approved_at: string | null;
+  issued_by: number | null;
+  issued_at: string | null;
+  sent_at: string | null;
+  locked_month_id: number | null;
   created_at: string;
   updated_at: string;
   project?: Project;
   preparedBy?: User;
   approvedBy?: User;
+  issuedBy?: User;
 }
 
 export interface InvoiceInput {
@@ -272,83 +231,143 @@ export interface InvoiceInput {
   project_id: number;
   month: string;
   year: string;
-  service_counts: Record<string, number>;
+  service_counts?: Record<string, number>;
   total_amount?: number;
-  status?: 'draft' | 'pending_approval' | 'approved' | 'sent';
 }
 
-// Dashboard Types
-export interface DashboardStats {
+// ═══════════════════════════════════════════
+// DASHBOARD TYPES
+// ═══════════════════════════════════════════
+
+export interface MasterDashboard {
+  org_totals: OrgTotals;
+  countries: CountryDashboard[];
+}
+
+export interface OrgTotals {
   total_projects: number;
-  active_projects: number;
-  total_orders: number;
-  completed_orders: number;
-  pending_orders: number;
-  in_progress_orders: number;
-  total_users: number;
-  active_users: number;
+  total_staff: number;
+  active_staff: number;
+  absentees: number;
+  orders_received_today: number;
+  orders_delivered_today: number;
+  orders_received_week: number;
+  orders_delivered_week: number;
+  orders_received_month: number;
+  orders_delivered_month: number;
+  total_pending: number;
 }
 
-export interface CountryStats extends DashboardStats {
+export interface CountryDashboard {
   country: string;
+  project_count: number;
+  total_staff: number;
+  active_staff: number;
+  absent_staff: number;
+  received_today: number;
+  delivered_today: number;
+  total_pending: number;
+  departments: DepartmentDashboard[];
 }
 
-export interface DepartmentStats extends DashboardStats {
-  country: string;
+export interface DepartmentDashboard {
   department: string;
-}
-
-export interface ProjectDashboardStats {
-  project: Project;
-  orders: {
-    total: number;
-    pending: number;
-    in_progress: number;
-    completed: number;
-    on_hold: number;
-  };
-  teams: {
-    total: number;
-    active: number;
-  };
-  staff: {
-    total: number;
-    active: number;
-    by_layer: Record<string, number>;
-  };
-}
-
-export interface LayerStats {
+  project_count: number;
+  total_orders: number;
+  delivered_today: number;
   pending: number;
-  in_progress: number;
-  completed: number;
+  sla_breaches: number;
+  projects: ProjectSummary[];
 }
 
-export interface WorkerStats {
-  user: User;
-  work_queue: Order[];
-  statistics: {
-    assigned: number;
-    in_progress: number;
-    completed_today: number;
-    completed_this_week: number;
-  };
+export interface ProjectSummary {
+  id: number;
+  code: string;
+  name: string;
+  workflow_type: WorkflowType;
+  pending: number;
+  delivered_today: number;
 }
 
-// API Response Types
+export interface ProjectDashboard {
+  project: Project;
+  state_counts: Record<string, { count: number; oldest: string | null }>;
+  staffing: Record<string, StageStaffing>;
+  performance: Record<string, StagePerformance>;
+  sla_breaches: number;
+  on_hold: number;
+  received_today: number;
+  delivered_today: number;
+}
+
+export interface StageStaffing {
+  role: string;
+  total: number;
+  active: number;
+  absent: number;
+  online: number;
+  users?: User[];
+}
+
+export interface StagePerformance {
+  today_completed: number;
+  total_target: number;
+  hit_rate: number;
+}
+
+export interface WorkerDashboardData {
+  current_order: Order | null;
+  today_completed: number;
+  daily_target: number;
+  target_progress: number;
+  queue_count: number;
+  wip_count: number;
+}
+
+export interface OpsDashboardData {
+  projects: OpsProjectItem[];
+  total_active_staff?: number;
+  total_absent?: number;
+  total_pending?: number;
+  total_delivered_today?: number;
+  absentees?: Array<{ id: number; name: string; role: string; reassigned_count?: number }>;
+}
+
+export interface OpsProjectItem {
+  project: Pick<Project, 'id' | 'code' | 'name' | 'country' | 'department' | 'workflow_type'>;
+  pending: number;
+  delivered_today: number;
+  total_staff: number;
+  active_staff: number;
+}
+
+export interface QueueHealth {
+  project_id: number;
+  workflow_type: WorkflowType;
+  state_counts: Record<string, { count: number; oldest: string | null }>;
+  stages?: Record<string, { queued: number; in_progress: number }>;
+  staffing?: Array<{ user_id: number; name: string; role: string; wip_count: number; is_absent: boolean; is_online: boolean }>;
+  sla_breaches: number;
+  total_pending: number;
+  total_delivered: number;
+}
+
+// ═══════════════════════════════════════════
+// FILTER / API TYPES
+// ═══════════════════════════════════════════
+
 export interface PaginatedResponse<T> {
   data: T[];
   current_page: number;
   last_page: number;
   per_page: number;
   total: number;
-  from: number;
-  to: number;
 }
 
 export interface ApiResponse<T> {
-  data: T;
+  data?: T;
   message?: string;
+  error?: string;
 }
 
 export interface ApiError {
@@ -356,44 +375,91 @@ export interface ApiError {
   errors?: Record<string, string[]>;
 }
 
-// Query Parameters
 export interface ProjectFilters {
   country?: string;
   department?: string;
   status?: string;
   search?: string;
-  per_page?: number;
-  page?: number;
 }
 
 export interface UserFilters {
   role?: string;
   country?: string;
-  department?: string;
   project_id?: number;
-  team_id?: number;
   is_active?: boolean;
-  search?: string;
-  per_page?: number;
-  page?: number;
 }
 
 export interface OrderFilters {
-  project_id?: number;
-  status?: string;
-  layer?: string;
+  state?: WorkflowState;
   priority?: string;
-  search?: string;
-  per_page?: number;
-  page?: number;
+  assigned_to?: number;
+  team_id?: number;
 }
 
-export interface InvoiceFilters {
-  project_id?: number;
-  status?: string;
-  month?: string;
-  year?: string;
-  search?: string;
-  per_page?: number;
-  page?: number;
+// ═══════════════════════════════════════════
+// IMPORT TYPES (preserved from existing)
+// ═══════════════════════════════════════════
+
+export interface OrderImportSource {
+  id: number;
+  project_id: number;
+  type: 'csv' | 'api' | 'cron';
+  name: string;
+  api_endpoint?: string;
+  cron_schedule?: string;
+  last_sync_at?: string;
+  orders_synced: number;
+  is_active: boolean;
+  field_mapping?: Record<string, string>;
+}
+
+export interface OrderImportLog {
+  id: number;
+  import_source_id: number;
+  imported_by: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  total_rows: number;
+  imported_count: number;
+  skipped_count: number;
+  error_count: number;
+  orders_imported?: number;
+  orders_skipped?: number;
+  errors?: Array<{ row: number; message: string; timestamp: string }>;
+  file_path?: string;
+  started_at?: string;
+  completed_at?: string;
+  created_at?: string;
+}
+
+export interface ChecklistItem {
+  id: number;
+  template_id: number;
+  title: string;
+  is_checked: boolean;
+  is_required?: boolean;
+  description?: string;
+  notes?: string;
+  completed_at?: string;
+  completed_by?: number;
+}
+
+export interface ChecklistTemplate {
+  id: number;
+  project_id: number;
+  layer: string;
+  title: string;
+  description: string;
+  sort_order: number;
+  is_required: boolean;
+  is_active: boolean;
+}
+
+export interface OrderChecklist {
+  id: number;
+  order_id: number;
+  checklist_template_id: number;
+  completed_by: number | null;
+  is_checked: boolean;
+  notes: string;
+  completed_at: string | null;
 }

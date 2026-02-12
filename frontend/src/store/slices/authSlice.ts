@@ -7,11 +7,11 @@ export interface User {
   role: string;
   country: string;
   department?: string;
-  project_id?: number;
-  team_id?: number;
-  layer?: string;
+  project_id?: number | null;
+  team_id?: number | null;
+  layer?: string | null;
   is_active: boolean;
-  last_activity?: string;
+  last_activity?: string | null;
 }
 
 interface AuthState {

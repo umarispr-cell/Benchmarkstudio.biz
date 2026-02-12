@@ -41,8 +41,9 @@ const UserManagement = () => {
       if (selectedCountry !== 'all') params.country = selectedCountry;
       if (searchTerm) params.search = searchTerm;
       
-      const response = await userService.getAll(params);
-      setUsers(response.data);
+      const response = await userService.list(params);
+      const data = response.data?.data || response.data;
+      setUsers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error loading users:', error);
     } finally {

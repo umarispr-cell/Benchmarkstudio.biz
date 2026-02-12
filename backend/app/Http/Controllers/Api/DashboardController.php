@@ -6,244 +6,296 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Project;
 use App\Models\User;
+use App\Models\WorkItem;
+use App\Services\StateMachine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
     /**
-     * Get CEO dashboard statistics.
+     * GET /dashboard/master
+     * CEO/Director: Org → Country → Department → Project drilldown.
      */
-    public function ceo()
+    public function master(Request $request)
     {
-        $stats = [
-            'countries' => $this->getCountryStats(),
-            'overview' => [
-                'total_projects' => Project::count(),
-                'active_projects' => Project::where('status', 'active')->count(),
-                'total_orders' => Order::count(),
-                'completed_orders' => Order::where('status', 'completed')->count(),
-                'total_users' => User::count(),
-                'active_users' => User::where('is_active', true)->count(),
-            ],
-            'recent_activities' => $this->getRecentActivities(20),
-        ];
-
-        return response()->json($stats);
-    }
-
-    /**
-     * Get Operations Manager dashboard statistics.
-     */
-    public function operations(Request $request)
-    {
-        $country = $request->input('country', auth()->user()->country);
-        $department = $request->input('department');
-
-        $query = Project::where('country', $country);
-        
-        if ($department) {
-            $query->where('department', $department);
+        $user = $request->user();
+        if (!in_array($user->role, ['ceo', 'director'])) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $projects = $query->with(['teams', 'orders'])->get();
-
-        $stats = [
-            'country' => $country,
-            'department' => $department,
-            'projects' => $projects->map(function ($project) {
-                return [
-                    'id' => $project->id,
-                    'name' => $project->name,
-                    'code' => $project->code,
-                    'department' => $project->department,
-                    'total_orders' => $project->orders->count(),
-                    'pending_orders' => $project->orders->where('status', 'pending')->count(),
-                    'in_progress_orders' => $project->orders->where('status', 'in-progress')->count(),
-                    'completed_orders' => $project->orders->where('status', 'completed')->count(),
-                    'total_teams' => $project->teams->count(),
-                    'active_teams' => $project->teams->where('is_active', true)->count(),
-                ];
-            }),
-            'layers' => $this->getLayerStats($country, $department),
-        ];
-
-        return response()->json($stats);
-    }
-
-    /**
-     * Get worker dashboard statistics.
-     */
-    public function worker()
-    {
-        $user = auth()->user();
-
-        $stats = [
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'role' => $user->role,
-                'layer' => $user->layer,
-                'project' => $user->project,
-                'team' => $user->team,
-            ],
-            'work_queue' => Order::where('assigned_to', $user->id)
-                ->where('status', '!=', 'completed')
-                ->with(['project', 'team'])
-                ->get(),
-            'statistics' => [
-                'assigned' => Order::where('assigned_to', $user->id)
-                    ->where('status', 'pending')
-                    ->count(),
-                'in_progress' => Order::where('assigned_to', $user->id)
-                    ->where('status', 'in-progress')
-                    ->count(),
-                'completed_today' => Order::where('assigned_to', $user->id)
-                    ->where('status', 'completed')
-                    ->whereDate('completed_at', today())
-                    ->count(),
-                'completed_this_week' => Order::where('assigned_to', $user->id)
-                    ->where('status', 'completed')
-                    ->whereBetween('completed_at', [now()->startOfWeek(), now()->endOfWeek()])
-                    ->count(),
-            ],
-        ];
-
-        return response()->json($stats);
-    }
-
-    /**
-     * Get department statistics.
-     */
-    public function department(Request $request)
-    {
-        $country = $request->input('country', auth()->user()->country);
-        $department = $request->input('department', auth()->user()->department);
-
-        $projects = Project::where('country', $country)
-            ->where('department', $department)
+        $countries = Project::select('country')
+            ->selectRaw('COUNT(*) as project_count')
+            ->where('status', 'active')
+            ->groupBy('country')
             ->get();
 
-        $stats = [
-            'country' => $country,
-            'department' => $department,
-            'total_projects' => $projects->count(),
-            'active_projects' => $projects->where('status', 'active')->count(),
-            'total_orders' => Order::whereIn('project_id', $projects->pluck('id'))->count(),
-            'pending_orders' => Order::whereIn('project_id', $projects->pluck('id'))
-                ->where('status', 'pending')
-                ->count(),
-            'in_progress_orders' => Order::whereIn('project_id', $projects->pluck('id'))
-                ->where('status', 'in-progress')
-                ->count(),
-            'completed_orders' => Order::whereIn('project_id', $projects->pluck('id'))
-                ->where('status', 'completed')
-                ->count(),
-        ];
+        $summary = [];
+        foreach ($countries as $c) {
+            $projects = Project::where('country', $c->country)->where('status', 'active')->get();
+            $projectIds = $projects->pluck('id');
 
-        return response()->json($stats);
-    }
+            $departments = [];
+            foreach ($projects->groupBy('department') as $dept => $deptProjects) {
+                $deptProjectIds = $deptProjects->pluck('id');
 
-    /**
-     * Get project statistics.
-     */
-    public function project(string $projectId)
-    {
-        $project = Project::with(['teams', 'users', 'orders'])->findOrFail($projectId);
-
-        $stats = [
-            'project' => $project,
-            'orders' => [
-                'total' => $project->orders->count(),
-                'pending' => $project->orders->where('status', 'pending')->count(),
-                'in_progress' => $project->orders->where('status', 'in-progress')->count(),
-                'completed' => $project->orders->where('status', 'completed')->count(),
-                'on_hold' => $project->orders->where('status', 'on-hold')->count(),
-            ],
-            'teams' => [
-                'total' => $project->teams->count(),
-                'active' => $project->teams->where('is_active', true)->count(),
-            ],
-            'staff' => [
-                'total' => $project->users->count(),
-                'active' => $project->users->where('is_active', true)->count(),
-                'by_layer' => $project->users->groupBy('layer')->map->count(),
-            ],
-        ];
-
-        return response()->json($stats);
-    }
-
-    /**
-     * Get country statistics.
-     */
-    private function getCountryStats()
-    {
-        return DB::table('projects')
-            ->select('country', DB::raw('count(*) as total_projects'))
-            ->groupBy('country')
-            ->get()
-            ->map(function ($country) {
-                $projects = Project::where('country', $country->country)->pluck('id');
-                return [
-                    'country' => $country->country,
-                    'total_projects' => $country->total_projects,
-                    'active_projects' => Project::where('country', $country->country)
-                        ->where('status', 'active')
+                $deptData = [
+                    'department' => $dept,
+                    'project_count' => $deptProjects->count(),
+                    'total_orders' => Order::whereIn('project_id', $deptProjectIds)->count(),
+                    'delivered_today' => Order::whereIn('project_id', $deptProjectIds)
+                        ->where('workflow_state', 'DELIVERED')
+                        ->whereDate('delivered_at', today())
                         ->count(),
-                    'total_orders' => Order::whereIn('project_id', $projects)->count(),
-                    'pending_orders' => Order::whereIn('project_id', $projects)
-                        ->where('status', 'pending')
+                    'pending' => Order::whereIn('project_id', $deptProjectIds)
+                        ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED'])
                         ->count(),
-                    'completed_orders' => Order::whereIn('project_id', $projects)
-                        ->where('status', 'completed')
+                    'sla_breaches' => Order::whereIn('project_id', $deptProjectIds)
+                        ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED'])
+                        ->whereNotNull('due_date')
+                        ->where('due_date', '<', now())
                         ->count(),
+                    'projects' => $deptProjects->map(fn($p) => [
+                        'id' => $p->id,
+                        'code' => $p->code,
+                        'name' => $p->name,
+                        'workflow_type' => $p->workflow_type,
+                        'pending' => Order::where('project_id', $p->id)
+                            ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED'])->count(),
+                        'delivered_today' => Order::where('project_id', $p->id)
+                            ->where('workflow_state', 'DELIVERED')
+                            ->whereDate('delivered_at', today())->count(),
+                    ]),
                 ];
-            });
-    }
-
-    /**
-     * Get layer statistics.
-     */
-    private function getLayerStats($country, $department = null)
-    {
-        $query = Order::whereHas('project', function ($q) use ($country, $department) {
-            $q->where('country', $country);
-            if ($department) {
-                $q->where('department', $department);
+                $departments[] = $deptData;
             }
-        });
 
-        $layers = ['drawer', 'checker', 'qa', 'designer'];
-        $stats = [];
+            $totalStaff = User::whereIn('project_id', $projectIds)->where('is_active', true)->count();
+            $activeStaff = User::whereIn('project_id', $projectIds)
+                ->where('is_active', true)
+                ->where('is_absent', false)
+                ->where('last_activity', '>', now()->subMinutes(15))
+                ->count();
+            $absentStaff = User::whereIn('project_id', $projectIds)
+                ->where('is_active', true)
+                ->where('is_absent', true)
+                ->count();
 
-        foreach ($layers as $layer) {
-            $stats[$layer] = [
-                'pending' => (clone $query)->where('current_layer', $layer)
-                    ->where('status', 'pending')
-                    ->count(),
-                'in_progress' => (clone $query)->where('current_layer', $layer)
-                    ->where('status', 'in-progress')
-                    ->count(),
-                'completed' => (clone $query)->where('current_layer', $layer)
-                    ->where('status', 'completed')
-                    ->count(),
+            $summary[] = [
+                'country' => $c->country,
+                'project_count' => $c->project_count,
+                'total_staff' => $totalStaff,
+                'active_staff' => $activeStaff,
+                'absent_staff' => $absentStaff,
+                'received_today' => Order::whereIn('project_id', $projectIds)
+                    ->whereDate('received_at', today())->count(),
+                'delivered_today' => Order::whereIn('project_id', $projectIds)
+                    ->where('workflow_state', 'DELIVERED')
+                    ->whereDate('delivered_at', today())->count(),
+                'total_pending' => Order::whereIn('project_id', $projectIds)
+                    ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED'])->count(),
+                'departments' => $departments,
             ];
         }
 
-        return $stats;
+        // Org-wide totals
+        $orgTotals = [
+            'total_projects' => Project::where('status', 'active')->count(),
+            'total_staff' => User::where('is_active', true)->count(),
+            'active_staff' => User::where('is_active', true)->where('is_absent', false)
+                ->where('last_activity', '>', now()->subMinutes(15))->count(),
+            'absentees' => User::where('is_active', true)->where('is_absent', true)->count(),
+            'orders_received_today' => Order::whereDate('received_at', today())->count(),
+            'orders_delivered_today' => Order::where('workflow_state', 'DELIVERED')
+                ->whereDate('delivered_at', today())->count(),
+            'orders_received_week' => Order::where('received_at', '>=', now()->startOfWeek())->count(),
+            'orders_delivered_week' => Order::where('workflow_state', 'DELIVERED')
+                ->where('delivered_at', '>=', now()->startOfWeek())->count(),
+            'orders_received_month' => Order::where('received_at', '>=', now()->startOfMonth())->count(),
+            'orders_delivered_month' => Order::where('workflow_state', 'DELIVERED')
+                ->where('delivered_at', '>=', now()->startOfMonth())->count(),
+            'total_pending' => Order::whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED'])->count(),
+        ];
+
+        return response()->json([
+            'org_totals' => $orgTotals,
+            'countries' => $summary,
+        ]);
     }
 
     /**
-     * Get recent activities.
+     * GET /dashboard/project/{id}
+     * Project dashboard: queue health, staffing, performance.
      */
-    private function getRecentActivities($limit = 10)
+    public function project(Request $request, int $id)
     {
-        return DB::table('activity_logs')
-            ->join('users', 'activity_logs.user_id', '=', 'users.id')
-            ->select('activity_logs.*', 'users.name as user_name')
-            ->orderBy('activity_logs.created_at', 'desc')
-            ->limit($limit)
-            ->get();
+        $project = Project::findOrFail($id);
+        $workflowType = $project->workflow_type ?? 'FP_3_LAYER';
+        $states = $workflowType === 'PH_2_LAYER' ? StateMachine::PH_STATES : StateMachine::FP_STATES;
+
+        // Queue health: counts per state
+        $stateCounts = [];
+        foreach ($states as $state) {
+            $stateCounts[$state] = Order::where('project_id', $id)
+                ->where('workflow_state', $state)->count();
+        }
+
+        // Staffing
+        $stages = StateMachine::getStages($workflowType);
+        $staffing = [];
+        foreach ($stages as $stage) {
+            $role = StateMachine::STAGE_TO_ROLE[$stage];
+            $users = User::where('project_id', $id)->where('role', $role)->get();
+            $staffing[$stage] = [
+                'required' => $users->count(),
+                'active' => $users->where('is_active', true)->where('is_absent', false)->count(),
+                'absent' => $users->where('is_absent', true)->count(),
+                'online' => $users->filter(fn($u) => $u->last_activity && $u->last_activity->gt(now()->subMinutes(15)))->count(),
+            ];
+        }
+
+        // Performance: per role completion and target hit rate
+        $performance = [];
+        foreach ($stages as $stage) {
+            $role = StateMachine::STAGE_TO_ROLE[$stage];
+            $users = User::where('project_id', $id)->where('role', $role)->where('is_active', true)->get();
+            $totalTarget = $users->sum('daily_target');
+            $totalCompleted = WorkItem::where('project_id', $id)
+                ->where('stage', $stage)
+                ->where('status', 'completed')
+                ->whereDate('completed_at', today())
+                ->count();
+
+            $performance[$stage] = [
+                'today_completed' => $totalCompleted,
+                'total_target' => $totalTarget,
+                'hit_rate' => $totalTarget > 0 ? round(($totalCompleted / $totalTarget) * 100, 1) : 0,
+            ];
+        }
+
+        // SLA breaches
+        $slaBreaches = Order::where('project_id', $id)
+            ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED'])
+            ->whereNotNull('due_date')
+            ->where('due_date', '<', now())
+            ->count();
+
+        return response()->json([
+            'project' => $project,
+            'state_counts' => $stateCounts,
+            'staffing' => $staffing,
+            'performance' => $performance,
+            'sla_breaches' => $slaBreaches,
+            'on_hold' => Order::where('project_id', $id)->where('workflow_state', 'ON_HOLD')->count(),
+            'received_today' => Order::where('project_id', $id)->whereDate('received_at', today())->count(),
+            'delivered_today' => Order::where('project_id', $id)
+                ->where('workflow_state', 'DELIVERED')
+                ->whereDate('delivered_at', today())->count(),
+        ]);
+    }
+
+    /**
+     * GET /dashboard/operations
+     * Ops Manager: assigned projects overview.
+     */
+    public function operations(Request $request)
+    {
+        $user = $request->user();
+
+        // Get projects the ops manager is responsible for
+        $projects = $user->project_id
+            ? Project::where('id', $user->project_id)->get()
+            : Project::where('country', $user->country)->where('status', 'active')->get();
+
+        $data = $projects->map(function ($project) {
+            $pending = Order::where('project_id', $project->id)
+                ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED'])->count();
+            $deliveredToday = Order::where('project_id', $project->id)
+                ->where('workflow_state', 'DELIVERED')
+                ->whereDate('delivered_at', today())->count();
+            $staff = User::where('project_id', $project->id)
+                ->where('is_active', true)->count();
+            $activeStaff = User::where('project_id', $project->id)
+                ->where('is_active', true)->where('is_absent', false)
+                ->where('last_activity', '>', now()->subMinutes(15))->count();
+
+            return [
+                'project' => $project->only(['id', 'code', 'name', 'country', 'department', 'workflow_type']),
+                'pending' => $pending,
+                'delivered_today' => $deliveredToday,
+                'total_staff' => $staff,
+                'active_staff' => $activeStaff,
+            ];
+        });
+
+        return response()->json(['projects' => $data]);
+    }
+
+    /**
+     * GET /dashboard/worker
+     * Worker's personal dashboard.
+     */
+    public function worker(Request $request)
+    {
+        $user = $request->user();
+
+        $currentOrder = Order::where('assigned_to', $user->id)
+            ->whereIn('workflow_state', ['IN_DRAW', 'IN_CHECK', 'IN_QA', 'IN_DESIGN'])
+            ->with('project:id,name,code')
+            ->first();
+
+        $todayCompleted = WorkItem::where('assigned_user_id', $user->id)
+            ->where('status', 'completed')
+            ->whereDate('completed_at', today())
+            ->count();
+
+        $queueCount = 0;
+        if ($user->project_id) {
+            $project = $user->project;
+            if ($project) {
+                $queueStates = StateMachine::getQueuedStates($project->workflow_type ?? 'FP_3_LAYER');
+                foreach ($queueStates as $state) {
+                    $role = StateMachine::getRoleForState($state);
+                    if ($role === $user->role) {
+                        $queueCount = Order::where('project_id', $user->project_id)
+                            ->where('workflow_state', $state)->count();
+                        break;
+                    }
+                }
+            }
+        }
+
+        return response()->json([
+            'current_order' => $currentOrder,
+            'today_completed' => $todayCompleted,
+            'daily_target' => $user->daily_target ?? 0,
+            'target_progress' => $user->daily_target > 0
+                ? round(($todayCompleted / $user->daily_target) * 100, 1)
+                : 0,
+            'queue_count' => $queueCount,
+            'wip_count' => $user->wip_count,
+        ]);
+    }
+
+    /**
+     * GET /dashboard/absentees
+     * List all absentees (org-wide or project-scoped).
+     */
+    public function absentees(Request $request)
+    {
+        $user = $request->user();
+        $query = User::where('is_active', true)->where('is_absent', true);
+
+        if (!in_array($user->role, ['ceo', 'director'])) {
+            if ($user->project_id) {
+                $query->where('project_id', $user->project_id);
+            }
+        }
+
+        return response()->json([
+            'absentees' => $query->with('project:id,name,code')->get([
+                'id', 'name', 'email', 'role', 'project_id', 'team_id', 'last_activity',
+            ]),
+        ]);
     }
 }

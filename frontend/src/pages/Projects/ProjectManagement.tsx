@@ -55,8 +55,9 @@ const ProjectManagement = () => {
       if (selectedDepartment !== 'all') params.department = selectedDepartment;
       if (searchTerm) params.search = searchTerm;
       
-      const response = await projectService.getAll(params);
-      setProjects(response.data);
+      const response = await projectService.list(params);
+      const data = response.data?.data || response.data;
+      setProjects(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error loading projects:', error);
     } finally {
@@ -128,8 +129,8 @@ const ProjectManagement = () => {
   const handleViewStats = async (project: Project) => {
     setShowStatsModal(project);
     try {
-      const stats = await projectService.getStatistics(project.id);
-      setProjectStats(stats);
+      const stats = await projectService.statistics(project.id);
+      setProjectStats(stats.data);
     } catch (error) {
       setProjectStats(null);
     }
@@ -138,8 +139,9 @@ const ProjectManagement = () => {
   const handleViewTeams = async (project: Project) => {
     setShowTeamsModal(project);
     try {
-      const teams = await projectService.getTeams(project.id);
-      setProjectTeams(teams);
+      const teams = await projectService.teams(project.id);
+      const teamsData = teams.data?.data || teams.data;
+      setProjectTeams(Array.isArray(teamsData) ? teamsData : []);
     } catch (error) {
       setProjectTeams([]);
     }

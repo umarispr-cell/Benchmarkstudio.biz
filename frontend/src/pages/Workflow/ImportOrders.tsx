@@ -44,10 +44,12 @@ const ImportOrders = () => {
 
   const loadProjects = async () => {
     try {
-      const response = await projectService.getAll();
-      setProjects(response.data);
-      if (response.data.length > 0) {
-        setSelectedProject(response.data[0].id);
+      const response = await projectService.list();
+      const data = response.data?.data || response.data;
+      const list = Array.isArray(data) ? data : [];
+      setProjects(list);
+      if (list.length > 0) {
+        setSelectedProject(list[0].id);
       }
     } catch (error) {
       console.error('Failed to load projects:', error);
@@ -60,11 +62,12 @@ const ImportOrders = () => {
     if (!selectedProject) return;
     try {
       const [sourcesRes, historyRes] = await Promise.all([
-        orderImportService.getSources(selectedProject),
-        orderImportService.getImportHistory(selectedProject),
+        orderImportService.sources(selectedProject),
+        orderImportService.importHistory(selectedProject),
       ]);
-      setSources(sourcesRes);
-      setImportHistory(historyRes.data || []);
+      setSources(sourcesRes.data?.data || sourcesRes.data || []);
+      const histData = historyRes.data?.data || historyRes.data;
+      setImportHistory(Array.isArray(histData) ? histData : []);
     } catch (error) {
       console.error('Failed to load project data:', error);
     }
@@ -108,7 +111,9 @@ const ImportOrders = () => {
     
     try {
       setImporting(true);
-      const response = await orderImportService.importCsv(selectedProject, selectedFile);
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      const response = await orderImportService.importCsv(selectedProject, formData);
       setImportResult(response.data);
       setSelectedFile(null);
       loadProjectData();
@@ -428,7 +433,7 @@ const ImportOrders = () => {
                   {importHistory.map((log) => (
                     <tr key={log.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 text-sm text-slate-700">
-                        {new Date(log.started_at || log.created_at).toLocaleString()}
+                        {new Date(log.started_at || log.created_at || '').toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-700">
                         {log.file_path ? 'CSV Upload' : 'API Sync'}

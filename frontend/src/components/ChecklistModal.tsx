@@ -28,9 +28,21 @@ const ChecklistModal = ({ orderId, orderNumber, onComplete, onClose }: Checklist
     try {
       setLoading(true);
       setError(null);
-      const response = await checklistService.getOrderChecklist(orderId);
-      setItems(response.items || []);
-      setAllRequiredCompleted(response.all_required_completed);
+      const response = await checklistService.orderChecklist(orderId);
+      const raw = response.data?.data || response.data || [];
+      const data: ChecklistItem[] = (Array.isArray(raw) ? raw : []).map((item: any) => ({
+        id: item.id,
+        template_id: item.checklist_template_id ?? item.template_id,
+        title: item.template?.title ?? item.title ?? '',
+        is_checked: item.is_checked,
+        is_required: item.template?.is_required ?? item.is_required,
+        description: item.template?.description ?? item.description,
+        notes: item.notes,
+        completed_at: item.completed_at,
+        completed_by: item.completed_by,
+      }));
+      setItems(data);
+      setAllRequiredCompleted(data.every?.((item: any) => !item.is_required || item.is_checked) ?? false);
     } catch (error: any) {
       console.error('Failed to load checklist:', error);
       setError(error.response?.data?.message || 'Failed to load checklist');

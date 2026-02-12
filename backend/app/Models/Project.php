@@ -11,26 +11,21 @@ class Project extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'code',
-        'name',
-        'country',
-        'department',
-        'client_name',
-        'status',
-        'total_orders',
-        'completed_orders',
-        'pending_orders',
-        'total_teams',
-        'active_teams',
-        'total_staff',
-        'active_staff',
-        'workflow_layers',
-        'metadata',
+        'code', 'name', 'country', 'department', 'client_name', 'status',
+        'total_orders', 'completed_orders', 'pending_orders',
+        'total_teams', 'active_teams', 'total_staff', 'active_staff',
+        'workflow_layers', 'metadata',
+        'workflow_type', 'sla_config', 'invoice_categories_config',
+        'client_portal_config', 'target_config', 'wip_cap',
     ];
 
     protected $casts = [
         'workflow_layers' => 'array',
         'metadata' => 'array',
+        'sla_config' => 'array',
+        'invoice_categories_config' => 'array',
+        'client_portal_config' => 'array',
+        'target_config' => 'array',
         'total_orders' => 'integer',
         'completed_orders' => 'integer',
         'pending_orders' => 'integer',
@@ -38,6 +33,7 @@ class Project extends Model
         'active_teams' => 'integer',
         'total_staff' => 'integer',
         'active_staff' => 'integer',
+        'wip_cap' => 'integer',
     ];
 
     /**

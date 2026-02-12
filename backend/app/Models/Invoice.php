@@ -20,13 +20,24 @@ class Invoice extends Model
         'prepared_by',
         'approved_by',
         'approved_at',
+        'issued_by',
+        'issued_at',
+        'sent_at',
+        'locked_month_id',
     ];
 
     protected $casts = [
         'service_counts' => 'array',
         'total_amount' => 'decimal:2',
         'approved_at' => 'datetime',
+        'issued_at' => 'datetime',
+        'sent_at' => 'datetime',
     ];
+
+    public function issuedBy()
+    {
+        return $this->belongsTo(User::class, 'issued_by');
+    }
 
     /**
      * Get the project that owns the invoice.

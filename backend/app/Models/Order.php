@@ -10,38 +10,29 @@ class Order extends Model
     use HasFactory;
 
     protected $fillable = [
-        'order_number',
-        'project_id',
-        'client_reference',
-        'current_layer',
-        'status',
-        'assigned_to',
-        'team_id',
-        'priority',
-        'received_at',
-        'started_at',
-        'completed_at',
-        'metadata',
-        'import_source',
-        'import_log_id',
-        'recheck_count',
-        'rejected_by',
-        'rejected_at',
-        'rejection_reason',
-        'rejection_type',
-        'checker_self_corrected',
-        'client_portal_id',
-        'client_portal_synced_at',
+        'order_number', 'project_id', 'client_reference',
+        'current_layer', 'status', 'workflow_state', 'workflow_type',
+        'assigned_to', 'team_id', 'priority',
+        'received_at', 'started_at', 'completed_at', 'delivered_at', 'due_date',
+        'metadata', 'import_source', 'import_log_id',
+        'recheck_count', 'rejected_by', 'rejected_at',
+        'rejection_reason', 'rejection_type', 'checker_self_corrected',
+        'client_portal_id', 'client_portal_synced_at',
+        'attempt_draw', 'attempt_check', 'attempt_qa',
+        'is_on_hold', 'hold_reason', 'hold_set_by',
     ];
 
     protected $casts = [
         'received_at' => 'datetime',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'delivered_at' => 'datetime',
         'rejected_at' => 'datetime',
         'client_portal_synced_at' => 'datetime',
+        'due_date' => 'date',
         'metadata' => 'array',
         'checker_self_corrected' => 'boolean',
+        'is_on_hold' => 'boolean',
     ];
 
     /**
@@ -74,6 +65,11 @@ class Order extends Model
     public function workAssignments()
     {
         return $this->hasMany(WorkAssignment::class);
+    }
+
+    public function workItems()
+    {
+        return $this->hasMany(WorkItem::class);
     }
 
     /**

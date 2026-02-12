@@ -1,440 +1,214 @@
-import apiClient from './api';
+import api from './api';
 import type {
-  LoginCredentials,
-  LoginResponse,
-  SessionCheckResponse,
-  User,
-  Project,
-  ProjectInput,
-  ProjectStatistics,
-  ProjectFilters,
-  UserFilters,
-  Order,
-  OrderInput,
-  OrderFilters,
-  Invoice,
-  InvoiceInput,
-  InvoiceFilters,
-  Team,
+  User, LoginCredentials, LoginResponse, SessionCheckResponse,
+  Project, ProjectInput, Team,
+  Order, WorkItem, MonthLock, Invoice, InvoiceInput,
+  MasterDashboard, ProjectDashboard, WorkerDashboardData, OpsDashboardData, QueueHealth,
   PaginatedResponse,
-  ApiResponse,
-  DashboardStats,
-  CountryStats,
-  DepartmentStats,
-  ProjectDashboardStats,
-  WorkerStats,
-  LayerStats,
+  OrderImportSource, OrderImportLog, ChecklistTemplate, OrderChecklist,
+  WorkflowState, InvoiceStatus,
 } from '../types';
 
-export type { LoginCredentials, LoginResponse };
-
+// ═══════════════════════════════════════════
+// AUTH SERVICE
+// ═══════════════════════════════════════════
 export const authService = {
-  login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
-    const response = await apiClient.post('/auth/login', credentials);
-    return response.data;
-  },
-
-  logout: async (): Promise<void> => {
-    await apiClient.post('/auth/logout');
-  },
-
-  getProfile: async (): Promise<ApiResponse<User>> => {
-    const response = await apiClient.get('/auth/profile');
-    return response.data;
-  },
-
-  checkSession: async (): Promise<SessionCheckResponse> => {
-    const response = await apiClient.get('/auth/session-check');
-    return response.data;
-  },
-
-  refreshToken: async (): Promise<ApiResponse<{ token: string }>> => {
-    const response = await apiClient.post('/auth/refresh');
-    return response.data;
-  },
+  login: (credentials: LoginCredentials) =>
+    api.post<LoginResponse>('/auth/login', credentials),
+  logout: () => api.post('/auth/logout'),
+  profile: () => api.get<User>('/auth/profile'),
+  sessionCheck: () => api.get<SessionCheckResponse>('/auth/session-check'),
+  forceLogout: (userId: number) => api.post(`/auth/force-logout/${userId}`),
 };
 
-export const projectService = {
-  getAll: async (params?: ProjectFilters): Promise<PaginatedResponse<Project>> => {
-    const response = await apiClient.get('/projects', { params });
-    return response.data;
-  },
-
-  getById: async (id: number): Promise<ApiResponse<Project>> => {
-    const response = await apiClient.get(`/projects/${id}`);
-    return response.data;
-  },
-
-  create: async (data: ProjectInput): Promise<ApiResponse<Project>> => {
-    const response = await apiClient.post('/projects', data);
-    return response.data;
-  },
-
-  update: async (id: number, data: Partial<ProjectInput>): Promise<ApiResponse<Project>> => {
-    const response = await apiClient.put(`/projects/${id}`, data);
-    return response.data;
-  },
-
-  delete: async (id: number): Promise<void> => {
-    await apiClient.delete(`/projects/${id}`);
-  },
-
-  getStatistics: async (id: number): Promise<ProjectStatistics> => {
-    const response = await apiClient.get(`/projects/${id}/statistics`);
-    return response.data;
-  },
-
-  getTeams: async (id: number): Promise<Team[]> => {
-    const response = await apiClient.get(`/projects/${id}/teams`);
-    return response.data;
-  },
-};
-
-export const userService = {
-  getAll: async (params?: UserFilters): Promise<PaginatedResponse<User>> => {
-    const response = await apiClient.get('/users', { params });
-    return response.data;
-  },
-
-  getById: async (id: number): Promise<ApiResponse<User>> => {
-    const response = await apiClient.get(`/users/${id}`);
-    return response.data;
-  },
-
-  create: async (data: Partial<User> & { password: string }): Promise<ApiResponse<User>> => {
-    const response = await apiClient.post('/users', data);
-    return response.data;
-  },
-
-  update: async (id: number, data: Partial<User>): Promise<ApiResponse<User>> => {
-    const response = await apiClient.put(`/users/${id}`, data);
-    return response.data;
-  },
-
-  delete: async (id: number): Promise<void> => {
-    await apiClient.delete(`/users/${id}`);
-  },
-
-  updateActivity: async (id: number): Promise<ApiResponse<{ message: string }>> => {
-    const response = await apiClient.post(`/users/${id}/activity`);
-    return response.data;
-  },
-
-  getInactiveUsers: async (): Promise<User[]> => {
-    const response = await apiClient.get('/users/inactive');
-    return response.data;
-  },
-
-  reassignWork: async (fromUserId: number, toUserId: number): Promise<ApiResponse<{ message: string; count: number }>> => {
-    const response = await apiClient.post('/workflow/reassign', {
-      from_user_id: fromUserId,
-      to_user_id: toUserId,
-    });
-    return response.data;
-  },
-};
-
-export const dashboardService = {
-  getCEO: async (): Promise<{ countries: CountryStats[]; overview: DashboardStats; recent_activities: any[] }> => {
-    const response = await apiClient.get('/dashboard/ceo');
-    return response.data;
-  },
-
-  getOperations: async (country?: string, department?: string): Promise<{ 
-    country: string; 
-    department: string; 
-    projects: any[]; 
-    layers: Record<string, LayerStats> 
-  }> => {
-    const response = await apiClient.get('/dashboard/operations', {
-      params: { country, department },
-    });
-    return response.data;
-  },
-
-  getWorker: async (): Promise<WorkerStats> => {
-    const response = await apiClient.get('/dashboard/worker');
-    return response.data;
-  },
-
-  getDepartment: async (country: string, department: string): Promise<DepartmentStats> => {
-    const response = await apiClient.get('/dashboard/department', {
-      params: { country, department },
-    });
-    return response.data;
-  },
-
-  getProject: async (projectId: number): Promise<ProjectDashboardStats> => {
-    const response = await apiClient.get(`/dashboard/project/${projectId}`);
-    return response.data;
-  },
-};
-
+// ═══════════════════════════════════════════
+// WORKFLOW SERVICE (State Machine)
+// ═══════════════════════════════════════════
 export const workflowService = {
-  getQueue: async (params?: OrderFilters): Promise<PaginatedResponse<Order>> => {
-    const response = await apiClient.get('/workflow/queue', { params });
-    return response.data;
-  },
+  // Worker: Start Next (auto-assignment — NO manual picking)
+  startNext: () => api.post<{ order: Order; message: string }>('/workflow/start-next'),
 
-  getOrder: async (orderId: number): Promise<ApiResponse<Order>> => {
-    const response = await apiClient.get(`/workflow/orders/${orderId}`);
-    return response.data;
-  },
+  // Worker: Get current assigned order
+  myCurrent: () => api.get<{ order: Order | null }>('/workflow/my-current'),
 
-  createOrder: async (data: OrderInput): Promise<ApiResponse<Order>> => {
-    const response = await apiClient.post('/workflow/orders', data);
-    return response.data;
-  },
+  // Worker: Submit completed work
+  submitWork: (orderId: number, comments?: string) =>
+    api.post<{ order: Order; message: string }>(`/workflow/orders/${orderId}/submit`, { comments }),
 
-  updateOrder: async (orderId: number, data: Partial<OrderInput>): Promise<ApiResponse<Order>> => {
-    const response = await apiClient.put(`/workflow/orders/${orderId}`, data);
-    return response.data;
-  },
+  // Worker: My daily stats
+  myStats: () => api.get<{ today_completed: number; daily_target: number; wip_count: number; queue_count: number; is_absent: boolean }>('/workflow/my-stats'),
 
-  assignOrder: async (orderId: number, userId: number): Promise<ApiResponse<Order>> => {
-    const response = await apiClient.post(`/workflow/orders/${orderId}/assign`, {
-      user_id: userId,
-    });
-    return response.data;
-  },
+  // Checker/QA: Reject order (mandatory reason)
+  rejectOrder: (orderId: number, reason: string, rejectionCode: string, routeTo?: string) =>
+    api.post<{ order: Order }>(`/workflow/orders/${orderId}/reject`, { reason, rejection_code: rejectionCode, route_to: routeTo }),
 
-  startOrder: async (orderId: number): Promise<ApiResponse<Order>> => {
-    const response = await apiClient.post(`/workflow/orders/${orderId}/start`);
-    return response.data;
-  },
+  // Hold/Resume
+  holdOrder: (orderId: number, holdReason: string) =>
+    api.post<{ order: Order }>(`/workflow/orders/${orderId}/hold`, { hold_reason: holdReason }),
+  resumeOrder: (orderId: number) =>
+    api.post<{ order: Order }>(`/workflow/orders/${orderId}/resume`),
 
-  completeOrder: async (orderId: number): Promise<ApiResponse<Order>> => {
-    const response = await apiClient.post(`/workflow/orders/${orderId}/complete`);
-    return response.data;
-  },
+  // Order details (role-filtered by backend)
+  orderDetails: (orderId: number) =>
+    api.get<{ order: Order }>(`/workflow/orders/${orderId}`),
 
-  // Rejection & Recheck
-  rejectOrder: async (orderId: number, reason: string, rejectionType: string): Promise<ApiResponse<Order>> => {
-    const response = await apiClient.post(`/workflow/orders/${orderId}/reject`, {
-      reason,
-      rejection_type: rejectionType,
-    });
-    return response.data;
-  },
+  // Work item history
+  workItemHistory: (orderId: number) =>
+    api.get<{ work_items: WorkItem[] }>(`/workflow/work-items/${orderId}`),
 
-  selfCorrectOrder: async (orderId: number, notes?: string): Promise<ApiResponse<Order>> => {
-    const response = await apiClient.post(`/workflow/orders/${orderId}/self-correct`, { notes });
-    return response.data;
-  },
+  // Management: Receive new order
+  receiveOrder: (data: { project_id: number; client_reference: string; priority?: string; due_date?: string; metadata?: Record<string, unknown> }) =>
+    api.post<{ order: Order }>('/workflow/receive', data),
 
-  getRejectedOrders: async (params?: OrderFilters): Promise<PaginatedResponse<Order>> => {
-    const response = await apiClient.get('/workflow/rejected', { params });
-    return response.data;
-  },
+  // Management: Reassign order
+  reassignOrder: (orderId: number, userId: number | null, reason: string) =>
+    api.post<{ order: Order }>(`/workflow/orders/${orderId}/reassign`, { user_id: userId, reason }),
 
-  getRecentlyImported: async (params?: OrderFilters): Promise<PaginatedResponse<Order>> => {
-    const response = await apiClient.get('/workflow/recently-imported', { params });
-    return response.data;
-  },
+  // Management: Queue health
+  queueHealth: (projectId: number) =>
+    api.get<QueueHealth>(`/workflow/${projectId}/queue-health`),
 
-  bulkAssign: async (assignments: Array<{ order_id: number; user_id: number }>): Promise<ApiResponse<{ results: any[] }>> => {
-    const response = await apiClient.post('/workflow/bulk-assign', { assignments });
-    return response.data;
-  },
+  // Management: Staffing
+  staffing: (projectId: number) =>
+    api.get<{ project_id: number; staffing: Record<string, { role: string; total: number; active: number; absent: number; users: User[] }> }>(`/workflow/${projectId}/staffing`),
 
-  // Client Portal Sync
-  getUnsyncedOrders: async (params?: OrderFilters): Promise<PaginatedResponse<Order>> => {
-    const response = await apiClient.get('/workflow/unsynced', { params });
-    return response.data;
-  },
-
-  markSynced: async (orderId: number, clientPortalId?: string): Promise<ApiResponse<Order>> => {
-    const response = await apiClient.post(`/workflow/orders/${orderId}/mark-synced`, {
-      client_portal_id: clientPortalId,
-    });
-    return response.data;
-  },
+  // Management: Project orders
+  projectOrders: (projectId: number, filters?: { state?: WorkflowState; priority?: string }) =>
+    api.get<PaginatedResponse<Order>>(`/workflow/${projectId}/orders`, { params: filters }),
 };
 
-// Order Import Service
-export const orderImportService = {
-  getSources: async (projectId: number): Promise<any[]> => {
-    const response = await apiClient.get(`/projects/${projectId}/import-sources`);
-    return response.data;
-  },
+// ═══════════════════════════════════════════
+// DASHBOARD SERVICE
+// ═══════════════════════════════════════════
+export const dashboardService = {
+  // CEO/Director: Master drilldown
+  master: () => api.get<MasterDashboard>('/dashboard/master'),
 
-  createSource: async (projectId: number, data: {
-    type: 'api' | 'cron' | 'csv' | 'manual';
-    name: string;
-    api_endpoint?: string;
-    api_credentials?: Record<string, any>;
-    cron_schedule?: string;
-    field_mapping?: Record<string, string>;
-  }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post(`/projects/${projectId}/import-sources`, data);
-    return response.data;
-  },
+  // Project-level dashboard
+  project: (projectId: number) => api.get<ProjectDashboard>(`/dashboard/project/${projectId}`),
 
-  updateSource: async (sourceId: number, data: Partial<{
-    name: string;
-    api_endpoint?: string;
-    api_credentials?: Record<string, any>;
-    cron_schedule?: string;
-    field_mapping?: Record<string, string>;
-    is_active: boolean;
-  }>): Promise<ApiResponse<any>> => {
-    const response = await apiClient.put(`/import-sources/${sourceId}`, data);
-    return response.data;
-  },
+  // Ops Manager
+  operations: () => api.get<OpsDashboardData>('/dashboard/operations'),
 
-  importCsv: async (projectId: number, file: File, sourceId?: number): Promise<ApiResponse<{
-    import_log_id: number;
-    total_rows: number;
-    imported: number;
-    skipped: number;
-    errors: any[];
-  }>> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    if (sourceId) {
-      formData.append('source_id', sourceId.toString());
-    }
-    const response = await apiClient.post(`/projects/${projectId}/import-csv`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return response.data;
-  },
+  // Worker personal
+  worker: () => api.get<WorkerDashboardData>('/dashboard/worker'),
 
-  syncFromApi: async (sourceId: number): Promise<ApiResponse<{
-    total: number;
-    imported: number;
-    skipped: number;
-    errors: any[];
-  }>> => {
-    const response = await apiClient.post(`/import-sources/${sourceId}/sync`);
-    return response.data;
-  },
-
-  getImportHistory: async (projectId: number): Promise<PaginatedResponse<any>> => {
-    const response = await apiClient.get(`/projects/${projectId}/import-history`);
-    return response.data;
-  },
-
-  getImportDetails: async (importLogId: number): Promise<any> => {
-    const response = await apiClient.get(`/import-logs/${importLogId}`);
-    return response.data;
-  },
+  // Absentees
+  absentees: () => api.get<{ absentees: User[] }>('/dashboard/absentees'),
 };
 
-// Checklist Service
-export const checklistService = {
-  getTemplates: async (projectId: number, layer?: string): Promise<any[]> => {
-    const response = await apiClient.get(`/projects/${projectId}/checklists`, {
-      params: layer ? { layer } : undefined,
-    });
-    return response.data;
-  },
+// ═══════════════════════════════════════════
+// MONTH LOCK SERVICE
+// ═══════════════════════════════════════════
+export const monthLockService = {
+  list: (projectId: number) =>
+    api.get<{ locks: MonthLock[] }>(`/month-locks/${projectId}`),
 
-  createTemplate: async (projectId: number, data: {
-    layer: 'drawer' | 'checker' | 'qa' | 'designer';
-    title: string;
-    description?: string;
-    sort_order?: number;
-    is_required?: boolean;
-  }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post(`/projects/${projectId}/checklists`, data);
-    return response.data;
-  },
+  lock: (projectId: number, month: number, year: number) =>
+    api.post<{ lock: MonthLock }>(`/month-locks/${projectId}/lock`, { month, year }),
 
-  updateTemplate: async (templateId: number, data: Partial<{
-    title: string;
-    description?: string;
-    sort_order?: number;
-    is_required?: boolean;
-    is_active?: boolean;
-  }>): Promise<ApiResponse<any>> => {
-    const response = await apiClient.put(`/checklists/${templateId}`, data);
-    return response.data;
-  },
+  unlock: (projectId: number, month: number, year: number) =>
+    api.post<{ lock: MonthLock }>(`/month-locks/${projectId}/unlock`, { month, year }),
 
-  deleteTemplate: async (templateId: number): Promise<void> => {
-    await apiClient.delete(`/checklists/${templateId}`);
-  },
+  counts: (projectId: number, month: number, year: number) =>
+    api.get<{ counts: Record<string, unknown>; is_locked: boolean }>(`/month-locks/${projectId}/counts`, { params: { month, year } }),
 
-  getOrderChecklist: async (orderId: number): Promise<{
-    order_id: number;
-    layer: string;
-    items: any[];
-    all_required_completed: boolean;
-  }> => {
-    const response = await apiClient.get(`/orders/${orderId}/checklist`);
-    return response.data;
-  },
-
-  updateOrderChecklist: async (orderId: number, templateId: number, data: {
-    is_checked: boolean;
-    notes?: string;
-  }): Promise<ApiResponse<{ all_required_completed: boolean }>> => {
-    const response = await apiClient.put(`/orders/${orderId}/checklist/${templateId}`, data);
-    return response.data;
-  },
-
-  bulkUpdateOrderChecklist: async (orderId: number, items: Array<{
-    template_id: number;
-    is_checked: boolean;
-    notes?: string;
-  }>): Promise<ApiResponse<{ all_required_completed: boolean }>> => {
-    const response = await apiClient.put(`/orders/${orderId}/checklist`, { items });
-    return response.data;
-  },
-
-  getChecklistStatus: async (orderId: number): Promise<{
-    order_id: number;
-    layer: string;
-    required_items: number;
-    completed_required: number;
-    total_items: number;
-    completed_total: number;
-    can_complete: boolean;
-    percentage: number;
-  }> => {
-    const response = await apiClient.get(`/orders/${orderId}/checklist-status`);
-    return response.data;
-  },
+  clearPanel: (projectId: number) =>
+    api.post(`/month-locks/${projectId}/clear`),
 };
 
+// ═══════════════════════════════════════════
+// INVOICE SERVICE (Draft → Prepared → Approved → Issued → Sent)
+// ═══════════════════════════════════════════
 export const invoiceService = {
-  getAll: async (params?: InvoiceFilters): Promise<PaginatedResponse<Invoice>> => {
-    const response = await apiClient.get('/invoices', { params });
-    return response.data;
-  },
+  list: (filters?: { project_id?: number; status?: InvoiceStatus; month?: number; year?: number }) =>
+    api.get<PaginatedResponse<Invoice>>('/invoices', { params: filters }),
 
-  getById: async (id: number): Promise<ApiResponse<Invoice>> => {
-    const response = await apiClient.get(`/invoices/${id}`);
-    return response.data;
-  },
+  create: (data: InvoiceInput) =>
+    api.post<{ invoice: Invoice }>('/invoices', data),
 
-  create: async (data: InvoiceInput): Promise<ApiResponse<Invoice>> => {
-    const response = await apiClient.post('/invoices', data);
-    return response.data;
-  },
+  show: (id: number) =>
+    api.get<{ invoice: Invoice }>(`/invoices/${id}`),
 
-  update: async (id: number, data: Partial<InvoiceInput>): Promise<ApiResponse<Invoice>> => {
-    const response = await apiClient.put(`/invoices/${id}`, data);
-    return response.data;
-  },
+  transition: (id: number, toStatus: InvoiceStatus) =>
+    api.post<{ invoice: Invoice }>(`/invoices/${id}/transition`, { to_status: toStatus }),
 
-  delete: async (id: number): Promise<void> => {
-    await apiClient.delete(`/invoices/${id}`);
-  },
+  delete: (id: number) =>
+    api.delete(`/invoices/${id}`),
+};
 
-  submitForApproval: async (id: number): Promise<ApiResponse<Invoice>> => {
-    const response = await apiClient.post(`/invoices/${id}/submit`);
-    return response.data;
-  },
+// ═══════════════════════════════════════════
+// PROJECT SERVICE
+// ═══════════════════════════════════════════
+export const projectService = {
+  list: (filters?: { country?: string; department?: string; status?: string }) =>
+    api.get<PaginatedResponse<Project>>('/projects', { params: filters }),
+  get: (id: number) => api.get<{ data: Project }>(`/projects/${id}`),
+  create: (data: ProjectInput) => api.post<{ data: Project }>('/projects', data),
+  update: (id: number, data: Partial<ProjectInput>) => api.put<{ data: Project }>(`/projects/${id}`, data),
+  delete: (id: number) => api.delete(`/projects/${id}`),
+  statistics: (id: number) => api.get(`/projects/${id}/statistics`),
+  teams: (id: number) => api.get<{ data: Team[] }>(`/projects/${id}/teams`),
+};
 
-  approve: async (id: number): Promise<ApiResponse<Invoice>> => {
-    const response = await apiClient.post(`/invoices/${id}/approve`);
-    return response.data;
-  },
+// ═══════════════════════════════════════════
+// USER SERVICE
+// ═══════════════════════════════════════════
+export const userService = {
+  list: (filters?: { role?: string; country?: string; project_id?: number }) =>
+    api.get<PaginatedResponse<User>>('/users', { params: filters }),
+  get: (id: number) => api.get<{ data: User }>(`/users/${id}`),
+  create: (data: Partial<User> & { password: string; password_confirmation: string }) =>
+    api.post<{ data: User }>('/users', data),
+  update: (id: number, data: Partial<User>) =>
+    api.put<{ data: User }>(`/users/${id}`, data),
+  delete: (id: number) => api.delete(`/users/${id}`),
+  deactivate: (id: number) => api.post(`/users/${id}/deactivate`),
+  inactive: () => api.get<{ data: User[] }>('/users-inactive'),
+  reassignWork: (userId: number) =>
+    api.post('/users/reassign-work', { user_id: userId }),
+};
 
-  markAsSent: async (id: number): Promise<ApiResponse<Invoice>> => {
-    const response = await apiClient.post(`/invoices/${id}/sent`);
-    return response.data;
-  },
+// ═══════════════════════════════════════════
+// IMPORT SERVICE
+// ═══════════════════════════════════════════
+export const orderImportService = {
+  sources: (projectId: number) =>
+    api.get<{ data: OrderImportSource[] }>(`/projects/${projectId}/import-sources`),
+  createSource: (projectId: number, data: Partial<OrderImportSource>) =>
+    api.post(`/projects/${projectId}/import-sources`, data),
+  updateSource: (sourceId: number, data: Partial<OrderImportSource>) =>
+    api.put(`/import-sources/${sourceId}`, data),
+  importCsv: (projectId: number, formData: FormData) =>
+    api.post(`/projects/${projectId}/import-csv`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  syncFromApi: (sourceId: number) =>
+    api.post(`/import-sources/${sourceId}/sync`),
+  importHistory: (projectId: number) =>
+    api.get<{ data: OrderImportLog[] }>(`/projects/${projectId}/import-history`),
+  importDetails: (logId: number) =>
+    api.get<{ data: OrderImportLog }>(`/import-logs/${logId}`),
+};
+
+// ═══════════════════════════════════════════
+// CHECKLIST SERVICE
+// ═══════════════════════════════════════════
+export const checklistService = {
+  templates: (projectId: number) =>
+    api.get<{ data: ChecklistTemplate[] }>(`/projects/${projectId}/checklists`),
+  createTemplate: (projectId: number, data: Partial<ChecklistTemplate>) =>
+    api.post(`/projects/${projectId}/checklists`, data),
+  updateTemplate: (templateId: number, data: Partial<ChecklistTemplate>) =>
+    api.put(`/checklists/${templateId}`, data),
+  deleteTemplate: (templateId: number) =>
+    api.delete(`/checklists/${templateId}`),
+  orderChecklist: (orderId: number) =>
+    api.get<{ data: OrderChecklist[] }>(`/orders/${orderId}/checklist`),
+  updateOrderChecklist: (orderId: number, templateId: number, data: Partial<OrderChecklist>) =>
+    api.put(`/orders/${orderId}/checklist/${templateId}`, data),
+  bulkUpdate: (orderId: number, items: Partial<OrderChecklist>[]) =>
+    api.put(`/orders/${orderId}/checklist`, { items }),
+  checklistStatus: (orderId: number) =>
+    api.get(`/orders/${orderId}/checklist-status`),
 };

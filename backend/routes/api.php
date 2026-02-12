@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\WorkflowController;
 use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\MonthLockController;
 use App\Http\Controllers\Api\OrderImportController;
 use App\Http\Controllers\Api\ChecklistController;
 use Illuminate\Http\Request;
@@ -13,49 +14,72 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\RateLimiter;
 
-// Rate limiting configuration
+// ── Rate limiting ──
 RateLimiter::for('login', function (Request $request) {
     return Limit::perMinute(5)->by($request->ip());
 });
 
-// Public routes with rate limiting
+// ── Public: Auth ──
 Route::post('/auth/login', [AuthController::class, 'login'])
     ->middleware('throttle:login');
 
-// Protected routes
-Route::middleware('auth:sanctum')->group(function () {
-    // Authentication (all authenticated users)
+// ── Authenticated routes ──
+Route::middleware(['auth:sanctum'])->group(function () {
+
+    // ── Auth ──
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/profile', [AuthController::class, 'profile']);
     Route::get('/auth/session-check', [AuthController::class, 'sessionCheck']);
-    Route::post('/auth/refresh', [AuthController::class, 'refresh']);
 
-    // Dashboard (role-specific access controlled in controller)
-    Route::get('/dashboard/ceo', [DashboardController::class, 'ceo']);
-    Route::get('/dashboard/operations', [DashboardController::class, 'operations']);
-    Route::get('/dashboard/worker', [DashboardController::class, 'worker']);
-    Route::get('/dashboard/department', [DashboardController::class, 'department']);
-    Route::get('/dashboard/project/{id}', [DashboardController::class, 'project']);
-    Route::get('/dashboard/absentees', [DashboardController::class, 'absentees']);
+    // ═══════════════════════════════════════════
+    // PRODUCTION WORKER ROUTES
+    // (drawer, checker, qa, designer)
+    // ═══════════════════════════════════════════
+    Route::prefix('workflow')->group(function () {
+        // Start Next (auto-assignment — NO manual picking)
+        Route::post('/start-next', [WorkflowController::class, 'startNext']);
 
-    // Workflow - Worker routes (all authenticated users can access)
-    Route::get('/workflow/queue', [WorkflowController::class, 'queue']);
-    Route::get('/workflow/assigned-order', [WorkflowController::class, 'assignedOrder']);
-    Route::post('/workflow/orders/{id}/start', [WorkflowController::class, 'startOrder']);
-    Route::post('/workflow/orders/{id}/complete', [WorkflowController::class, 'completeOrder']);
-    Route::post('/workflow/orders/{id}/submit', [WorkflowController::class, 'submitOrder']);
-    Route::get('/workflow/orders/{id}', [WorkflowController::class, 'orderDetails']);
-    Route::get('/workflow/rejected', [WorkflowController::class, 'rejectedOrders']);
-    Route::post('/workflow/orders/{id}/self-correct', [WorkflowController::class, 'selfCorrectOrder']);
-    
-    // Order checklists (accessible to workers)
+        // Current assigned order
+        Route::get('/my-current', [WorkflowController::class, 'myCurrent']);
+
+        // My stats
+        Route::get('/my-stats', [WorkflowController::class, 'myStats']);
+
+        // Submit completed work
+        Route::post('/orders/{id}/submit', [WorkflowController::class, 'submitWork']);
+
+        // Reject (checker/QA only)
+        Route::post('/orders/{id}/reject', [WorkflowController::class, 'rejectOrder']);
+
+        // Hold/Resume
+        Route::post('/orders/{id}/hold', [WorkflowController::class, 'holdOrder']);
+        Route::post('/orders/{id}/resume', [WorkflowController::class, 'resumeOrder']);
+
+        // Order details (role-filtered)
+        Route::get('/orders/{id}', [WorkflowController::class, 'orderDetails']);
+
+        // Work item history for an order
+        Route::get('/work-items/{orderId}', [WorkflowController::class, 'workItemHistory']);
+    });
+
+    // Order checklists (accessible to production + management)
     Route::get('/orders/{orderId}/checklist', [ChecklistController::class, 'orderChecklist']);
     Route::put('/orders/{orderId}/checklist/{templateId}', [ChecklistController::class, 'updateOrderChecklist']);
     Route::put('/orders/{orderId}/checklist', [ChecklistController::class, 'bulkUpdateOrderChecklist']);
     Route::get('/orders/{orderId}/checklist-status', [ChecklistController::class, 'checklistStatus']);
 
-    // Management routes - require manager+ roles
+    // ── Dashboards ──
+    Route::get('/dashboard/master', [DashboardController::class, 'master']);
+    Route::get('/dashboard/project/{id}', [DashboardController::class, 'project']);
+    Route::get('/dashboard/operations', [DashboardController::class, 'operations']);
+    Route::get('/dashboard/worker', [DashboardController::class, 'worker']);
+    Route::get('/dashboard/absentees', [DashboardController::class, 'absentees']);
+
+    // ═══════════════════════════════════════════
+    // MANAGEMENT ROUTES (ops_manager, director, ceo)
+    // ═══════════════════════════════════════════
     Route::middleware('role:ceo,director,operations_manager')->group(function () {
+
         // Projects
         Route::apiResource('projects', ProjectController::class);
         Route::get('/projects/{id}/statistics', [ProjectController::class, 'statistics']);
@@ -64,20 +88,25 @@ Route::middleware('auth:sanctum')->group(function () {
         // Users
         Route::apiResource('users', UserController::class);
         Route::post('/users/{id}/deactivate', [UserController::class, 'deactivate']);
-        Route::get('/users/inactive', [UserController::class, 'inactive']);
+        Route::get('/users-inactive', [UserController::class, 'inactive']);
         Route::post('/users/reassign-work', [UserController::class, 'reassignWork']);
 
+        // Force logout
+        Route::post('/auth/force-logout/{userId}', [AuthController::class, 'forceLogout']);
+
         // Workflow management
-        Route::get('/workflow/{projectId}/queues', [WorkflowController::class, 'queues']);
-        Route::post('/workflow/orders', [WorkflowController::class, 'createOrder']);
-        Route::put('/workflow/orders/{id}', [WorkflowController::class, 'updateOrder']);
-        Route::post('/workflow/orders/{id}/assign', [WorkflowController::class, 'assignOrder']);
+        Route::post('/workflow/receive', [WorkflowController::class, 'receiveOrder']);
         Route::post('/workflow/orders/{id}/reassign', [WorkflowController::class, 'reassignOrder']);
-        Route::post('/workflow/orders/{id}/reject', [WorkflowController::class, 'rejectOrder']);
-        Route::get('/workflow/recently-imported', [WorkflowController::class, 'recentlyImported']);
-        Route::post('/workflow/bulk-assign', [WorkflowController::class, 'bulkAssign']);
-        Route::get('/workflow/unsynced', [WorkflowController::class, 'unsyncedOrders']);
-        Route::post('/workflow/orders/{id}/mark-synced', [WorkflowController::class, 'markSynced']);
+        Route::get('/workflow/{projectId}/queue-health', [WorkflowController::class, 'queueHealth']);
+        Route::get('/workflow/{projectId}/staffing', [WorkflowController::class, 'staffing']);
+        Route::get('/workflow/{projectId}/orders', [WorkflowController::class, 'projectOrders']);
+
+        // Month Lock
+        Route::get('/month-locks/{projectId}', [MonthLockController::class, 'index']);
+        Route::post('/month-locks/{projectId}/lock', [MonthLockController::class, 'lock']);
+        Route::post('/month-locks/{projectId}/unlock', [MonthLockController::class, 'unlock']);
+        Route::get('/month-locks/{projectId}/counts', [MonthLockController::class, 'counts']);
+        Route::post('/month-locks/{projectId}/clear', [MonthLockController::class, 'clearPanel']);
 
         // Order Import
         Route::get('/projects/{projectId}/import-sources', [OrderImportController::class, 'sources']);
@@ -88,17 +117,21 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/projects/{projectId}/import-history', [OrderImportController::class, 'importHistory']);
         Route::get('/import-logs/{importLogId}', [OrderImportController::class, 'importDetails']);
 
-        // Checklist templates management
+        // Checklist templates
         Route::get('/projects/{projectId}/checklists', [ChecklistController::class, 'templates']);
         Route::post('/projects/{projectId}/checklists', [ChecklistController::class, 'createTemplate']);
         Route::put('/checklists/{templateId}', [ChecklistController::class, 'updateTemplate']);
         Route::delete('/checklists/{templateId}', [ChecklistController::class, 'deleteTemplate']);
     });
 
-    // Finance routes - CEO/Director only
+    // ═══════════════════════════════════════════
+    // FINANCE ROUTES (CEO/Director only)
+    // ═══════════════════════════════════════════
     Route::middleware('role:ceo,director')->group(function () {
-        Route::apiResource('invoices', InvoiceController::class);
-        Route::post('/invoices/{id}/approve', [InvoiceController::class, 'approve']);
-        Route::get('/invoices/prepare/{projectId}', [InvoiceController::class, 'prepare']);
+        Route::get('/invoices', [InvoiceController::class, 'index']);
+        Route::post('/invoices', [InvoiceController::class, 'store']);
+        Route::get('/invoices/{id}', [InvoiceController::class, 'show']);
+        Route::post('/invoices/{id}/transition', [InvoiceController::class, 'transition']);
+        Route::delete('/invoices/{id}', [InvoiceController::class, 'destroy']);
     });
 });

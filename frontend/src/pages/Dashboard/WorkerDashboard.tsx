@@ -1,376 +1,322 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
-import type { RootState } from '../../store/store';
-import { dashboardService, workflowService } from '../../services';
-import {
-  ClipboardList,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  TrendingUp,
-  Play,
-  ArrowRight,
-  Timer,
-  Tag,
-  Hash,
-  Zap,
-  Target,
-  X,
-} from 'lucide-react';
+import { workflowService, dashboardService } from '../../services';
+import type { Order, WorkerDashboardData, WorkItem } from '../../types';
+import { REJECTION_CODES } from '../../types';
+import { Play, Send, X, AlertTriangle, Clock, Target, Inbox, ChevronRight } from 'lucide-react';
 
-const WorkerDashboard = () => {
-  const navigate = useNavigate();
-  const { user } = useSelector((state: RootState) => state.auth);
-  const [currentOrder, setCurrentOrder] = useState<any>(null);
+export default function WorkerDashboard() {
+  const user = useSelector((state: any) => state.auth.user);
+  const [data, setData] = useState<WorkerDashboardData | null>(null);
+  const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
+  const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [completing, setCompleting] = useState(false);
-  const [showOrderDetail, setShowOrderDetail] = useState(false);
-  const [stats, setStats] = useState({
-    assigned: 0,
-    in_progress: 0,
-    completed_today: 0,
-    completed_this_week: 0,
-    daily_target: 10,
-  });
-  const [workQueue, setWorkQueue] = useState<any[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitComment, setSubmitComment] = useState('');
+  const [showReject, setShowReject] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectCode, setRejectCode] = useState('');
+  const [routeTo, setRouteTo] = useState('');
+  const [showHold, setShowHold] = useState(false);
+  const [holdReason, setHoldReason] = useState('');
+
+  const loadData = useCallback(async () => {
+    try {
+      const [dashRes, currentRes] = await Promise.all([
+        dashboardService.worker(),
+        workflowService.myCurrent(),
+      ]);
+      setData(dashRes.data);
+      setCurrentOrder(currentRes.data.order);
+
+      if (currentRes.data.order) {
+        const itemsRes = await workflowService.workItemHistory(currentRes.data.order.id);
+        setWorkItems(itemsRes.data.work_items);
+      }
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+    const interval = setInterval(loadData, 15000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
-  const loadData = async () => {
+  const handleStartNext = async () => {
+    setSubmitting(true);
     try {
-      setLoading(true);
-      const data = await dashboardService.getWorker();
-      setCurrentOrder(data.work_queue?.[0] || null);
-      setWorkQueue(data.work_queue || []);
-      if (data.statistics) {
-        setStats((prev) => ({
-          ...prev,
-          assigned: data.statistics.assigned || 0,
-          in_progress: data.statistics.in_progress || 0,
-          completed_today: data.statistics.completed_today || 0,
-          completed_this_week: data.statistics.completed_this_week || 0,
-        }));
+      const res = await workflowService.startNext();
+      if (res.data.order) {
+        setCurrentOrder(res.data.order);
+        loadData();
       }
-    } catch (error) {
-      console.error('Error loading data:', error);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { console.error(e); }
+    finally { setSubmitting(false); }
   };
 
-  const handleCompleteOrder = async () => {
+  const handleSubmit = async () => {
     if (!currentOrder) return;
+    setSubmitting(true);
     try {
-      setCompleting(true);
-      await workflowService.completeOrder(currentOrder.id);
-      await loadData();
-    } catch (error) {
-      console.error('Error completing order:', error);
-    } finally {
-      setCompleting(false);
-    }
+      await workflowService.submitWork(currentOrder.id, submitComment);
+      setSubmitComment('');
+      setCurrentOrder(null);
+      loadData();
+    } catch (e) { console.error(e); }
+    finally { setSubmitting(false); }
   };
 
-  const layerTitle = user?.layer
-    ? user.layer.charAt(0).toUpperCase() + user.layer.slice(1)
-    : 'Worker';
-  const progress =
-    stats.daily_target > 0
-      ? Math.round((stats.completed_today / stats.daily_target) * 100)
-      : 0;
+  const handleReject = async () => {
+    if (!currentOrder || !rejectReason || !rejectCode) return;
+    setSubmitting(true);
+    try {
+      await workflowService.rejectOrder(currentOrder.id, rejectReason, rejectCode, routeTo || undefined);
+      setShowReject(false);
+      setRejectReason('');
+      setRejectCode('');
+      setRouteTo('');
+      setCurrentOrder(null);
+      loadData();
+    } catch (e) { console.error(e); }
+    finally { setSubmitting(false); }
+  };
 
-  if (loading) {
-    return (
-      <div className="space-y-4 animate-fade-in">
-        <div className="h-7 w-48 bg-slate-200 rounded loading-shimmer" />
-        <div className="grid grid-cols-3 gap-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-white rounded-xl border border-slate-100 p-4">
-              <div className="animate-pulse space-y-3">
-                <div className="h-3 bg-slate-100 rounded w-16" />
-                <div className="h-6 bg-slate-100 rounded w-12" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const handleHold = async () => {
+    if (!currentOrder || !holdReason) return;
+    setSubmitting(true);
+    try {
+      await workflowService.holdOrder(currentOrder.id, holdReason);
+      setShowHold(false);
+      setHoldReason('');
+      setCurrentOrder(null);
+      loadData();
+    } catch (e) { console.error(e); }
+    finally { setSubmitting(false); }
+  };
+
+  const canReject = user?.role === 'checker' || user?.role === 'qa';
+  const canHold = ['checker', 'qa', 'operations_manager'].includes(user?.role);
+
+  if (loading) return <div className="flex items-center justify-center h-64"><div className="loading-shimmer w-full max-w-lg h-48 rounded-xl" /></div>;
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      {/* Header */}
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-slate-900">
-            Good{' '}
-            {new Date().getHours() < 12
-              ? 'morning'
-              : new Date().getHours() < 18
-                ? 'afternoon'
-                : 'evening'}
-            , {user?.name?.split(' ')[0]}
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {layerTitle} · Work queue & performance
-          </p>
-        </div>
-        <button
-          onClick={() => navigate('/work')}
-          className="text-[11px] text-teal-600 font-medium hover:text-teal-700 flex items-center gap-0.5"
-        >
-          View Queue <ArrowRight className="h-3 w-3" />
-        </button>
-      </div>
-
-      {/* Stats Row */}
-      <div className="grid grid-cols-3 gap-3">
-        {/* Progress */}
-        <div className="bg-white rounded-xl border border-slate-100 p-4">
-          <div className="flex items-center justify-between mb-2.5">
-            <div className="p-1.5 rounded-lg bg-emerald-50">
-              <Target className="h-3.5 w-3.5 text-emerald-600" />
-            </div>
-            {progress >= 50 && (
-              <span className="flex items-center gap-0.5 text-[11px] font-medium text-emerald-600">
-                <TrendingUp className="h-3 w-3" />
-              </span>
-            )}
-          </div>
-          <p className="text-xl font-bold text-slate-900 leading-none">
-            {stats.completed_today}
-            <span className="text-slate-300 text-sm font-normal">
-              /{stats.daily_target}
-            </span>
-          </p>
-          <p className="text-[11px] text-slate-400 mt-1">Today's progress</p>
-          <div className="mt-2.5">
-            <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(progress, 100)}%` }}
-              />
-            </div>
-            <p className="text-[10px] text-slate-400 mt-1">{progress}% of target</p>
-          </div>
-        </div>
-
-        {/* Queue */}
-        <div className="bg-white rounded-xl border border-slate-100 p-4">
-          <div className="mb-2.5">
-            <div className="p-1.5 rounded-lg bg-amber-50 w-fit">
-              <Clock className="h-3.5 w-3.5 text-amber-600" />
-            </div>
-          </div>
-          <p className="text-xl font-bold text-slate-900 leading-none">
-            {workQueue.length}
-          </p>
-          <p className="text-[11px] text-slate-400 mt-1">In queue</p>
-          <p className="text-[10px] text-slate-400 mt-2.5">
-            {stats.completed_this_week} this week
-          </p>
-        </div>
-
-        {/* Status */}
-        <div className="bg-white rounded-xl border border-slate-100 p-4">
-          <div className="flex items-center justify-between mb-2.5">
-            <div className="p-1.5 rounded-lg bg-violet-50">
-              <ClipboardList className="h-3.5 w-3.5 text-violet-600" />
-            </div>
-            {currentOrder && (
-              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-teal-50 text-teal-700">
-                <Zap className="w-2.5 h-2.5" /> Active
-              </span>
-            )}
-          </div>
-          <p className="text-sm font-bold text-slate-900 leading-tight">
-            {currentOrder ? 'Working' : 'Ready'}
-          </p>
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            {currentOrder ? 'Order in progress' : 'No active order'}
-          </p>
+          <h1 className="text-lg font-semibold text-slate-900">My Queue</h1>
+          <p className="text-xs text-slate-500">{user?.role?.replace('_', ' ')} · {user?.project?.name || 'No project'}</p>
         </div>
       </div>
 
-      {/* Current Order */}
+      {/* Today Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: 'Completed', value: data?.today_completed ?? 0, icon: Target, color: 'text-green-600 bg-green-50' },
+          { label: 'Target', value: data?.daily_target ?? 0, icon: Target, color: 'text-blue-600 bg-blue-50' },
+          { label: 'Queue', value: data?.queue_count ?? 0, icon: Inbox, color: 'text-amber-600 bg-amber-50' },
+          { label: 'Progress', value: `${data?.target_progress ?? 0}%`, icon: TrendingUp, color: 'text-teal-600 bg-teal-50' },
+        ].map((s, i) => (
+          <div key={i} className="bg-white rounded-xl p-3 border border-slate-100">
+            <div className="flex items-center gap-2 mb-1">
+              <div className={`w-6 h-6 rounded-md flex items-center justify-center ${s.color}`}>
+                <s.icon className="h-3.5 w-3.5" />
+              </div>
+              <span className="text-[10px] text-slate-500 uppercase">{s.label}</span>
+            </div>
+            <div className="text-lg font-bold text-slate-900">{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Progress bar */}
+      {data && data.daily_target > 0 && (
+        <div className="bg-white rounded-xl p-3 border border-slate-100">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-slate-500">Daily Progress</span>
+            <span className="text-xs font-medium text-slate-700">{data.today_completed}/{data.daily_target}</span>
+          </div>
+          <div className="w-full bg-slate-100 rounded-full h-1.5">
+            <div
+              className="bg-teal-500 h-1.5 rounded-full transition-all"
+              style={{ width: `${Math.min(data.target_progress, 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Current Order or Start Next */}
       {currentOrder ? (
         <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-          <div className="h-0.5 bg-gradient-to-r from-teal-500 to-cyan-500" />
+          <div className="bg-gradient-to-r from-teal-500 to-teal-600 h-1" />
           <div className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-teal-50">
-                  <Play className="w-3.5 h-3.5 text-teal-600" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900">
-                    Current Order
-                  </h3>
-                  <p className="text-[10px] text-slate-400">
-                    Focus on completing this
-                  </p>
-                </div>
+              <div>
+                <span className="text-xs text-slate-500">Current Order</span>
+                <h3 className="font-semibold text-slate-900">{currentOrder.order_number}</h3>
               </div>
-              <span className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-teal-50 text-teal-700">
-                <Zap className="w-3 h-3" /> In Progress
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
+                  currentOrder.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                  currentOrder.priority === 'high' ? 'bg-amber-100 text-amber-700' :
+                  'bg-slate-100 text-slate-600'
+                }`}>{currentOrder.priority}</span>
+                <span className="text-[10px] bg-teal-100 text-teal-700 px-2 py-0.5 rounded font-medium">{currentOrder.workflow_state}</span>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
               {[
-                { icon: Hash, label: 'Order', value: currentOrder.order_number },
-                {
-                  icon: Tag,
-                  label: 'Reference',
-                  value: currentOrder.client_reference,
-                },
-                { icon: Zap, label: 'Priority', value: currentOrder.priority },
-                {
-                  icon: Timer,
-                  label: 'Started',
-                  value: currentOrder.started_at
-                    ? new Date(currentOrder.started_at).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : '—',
-                },
-              ].map((item, i) => (
-                <div key={i} className="bg-slate-50 rounded-lg px-3 py-2">
-                  <div className="flex items-center gap-1 text-[10px] text-slate-400 mb-0.5">
-                    <item.icon className="w-3 h-3" /> {item.label}
-                  </div>
-                  <p className="text-xs font-semibold text-slate-800 capitalize truncate">
-                    {item.value || '—'}
-                  </p>
+                { label: 'Client Ref', value: currentOrder.client_reference },
+                { label: 'Due Date', value: currentOrder.due_date || 'N/A' },
+                { label: 'Attempts', value: `D:${currentOrder.attempt_draw} C:${currentOrder.attempt_check} Q:${currentOrder.attempt_qa}` },
+                { label: 'Rejections', value: currentOrder.recheck_count },
+              ].map((f, i) => (
+                <div key={i} className="bg-slate-50 rounded-lg p-2">
+                  <div className="text-[10px] text-slate-400">{f.label}</div>
+                  <div className="text-xs font-medium text-slate-700">{f.value}</div>
                 </div>
               ))}
             </div>
 
-            <div className="mt-3 pt-3 border-t border-slate-100 flex gap-2">
+            {/* Previous rejection info */}
+            {currentOrder.rejection_reason && (
+              <div className="bg-red-50 border border-red-100 rounded-lg p-2 mb-3">
+                <div className="text-[10px] font-medium text-red-700 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" /> Previous Rejection
+                </div>
+                <div className="text-xs text-red-600 mt-0.5">{currentOrder.rejection_reason}</div>
+              </div>
+            )}
+
+            {/* Work history */}
+            {workItems.length > 0 && (
+              <div className="mb-3">
+                <div className="text-[10px] text-slate-500 uppercase mb-1">History</div>
+                <div className="space-y-1">
+                  {workItems.slice(-3).map((wi) => (
+                    <div key={wi.id} className="flex items-center gap-2 text-[10px] text-slate-500">
+                      <span className="font-medium">{wi.stage}</span>
+                      <ChevronRight className="h-2.5 w-2.5" />
+                      <span>{wi.status}</span>
+                      {wi.rework_reason && <span className="text-red-500">— {wi.rework_reason}</span>}
+                      <span className="ml-auto">{wi.assignedUser?.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Submit comment */}
+            <div className="mb-3">
+              <textarea
+                value={submitComment}
+                onChange={(e) => setSubmitComment(e.target.value)}
+                placeholder="Notes (optional)..."
+                className="w-full text-xs p-2 border border-slate-200 rounded-lg resize-none h-16"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowOrderDetail(true)}
-                className="btn btn-secondary text-xs py-1.5 px-3"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-teal-600 text-white text-xs font-medium py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
               >
-                Details <ArrowRight className="w-3 h-3" />
+                <Send className="h-3.5 w-3.5" /> Submit to Next Stage
               </button>
-              <button
-                onClick={handleCompleteOrder}
-                disabled={completing}
-                className="btn btn-success text-xs py-1.5 px-3"
-              >
-                <CheckCircle2 className="w-3 h-3" />
-                {completing ? 'Saving...' : 'Complete'}
-              </button>
+              {canReject && (
+                <button
+                  onClick={() => setShowReject(true)}
+                  className="flex items-center gap-1 bg-red-50 text-red-600 text-xs font-medium py-2 px-3 rounded-lg hover:bg-red-100"
+                >
+                  <X className="h-3.5 w-3.5" /> Reject
+                </button>
+              )}
+              {canHold && (
+                <button
+                  onClick={() => setShowHold(true)}
+                  className="flex items-center gap-1 bg-amber-50 text-amber-600 text-xs font-medium py-2 px-3 rounded-lg hover:bg-amber-100"
+                >
+                  <Clock className="h-3.5 w-3.5" /> Hold
+                </button>
+              )}
             </div>
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-100 text-center py-10">
-          <AlertCircle className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-          <h3 className="text-sm font-semibold text-slate-700">
-            No Active Order
-          </h3>
-          <p className="text-xs text-slate-400 mt-0.5 max-w-xs mx-auto">
-            Orders will be auto-assigned from the queue.
-          </p>
+        <div className="bg-white rounded-xl border border-slate-100 p-6 text-center">
+          <Inbox className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+          <p className="text-sm text-slate-500 mb-3">No order currently assigned.</p>
           <button
-            onClick={() => navigate('/work')}
-            className="btn btn-secondary text-xs py-1.5 px-3 mt-3"
+            onClick={handleStartNext}
+            disabled={submitting || (data?.queue_count === 0)}
+            className="inline-flex items-center gap-2 bg-teal-600 text-white text-sm font-medium py-2.5 px-6 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Clock className="w-3 h-3" /> Check Queue
+            <Play className="h-4 w-4" /> Start Next
           </button>
+          {data?.queue_count === 0 && (
+            <p className="text-[10px] text-slate-400 mt-2">Queue is empty</p>
+          )}
         </div>
       )}
 
-      {/* Order Detail Modal */}
-      {showOrderDetail && currentOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setShowOrderDetail(false)}
-          />
-          <div className="relative bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">
-            <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-900">
-                Order Details
-              </h2>
-              <button
-                onClick={() => setShowOrderDetail(false)}
-                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X className="h-4 w-4 text-slate-400" />
-              </button>
-            </div>
-            <div className="p-5 space-y-2">
-              {[
-                { label: 'Order Number', value: currentOrder.order_number },
-                {
-                  label: 'Client Reference',
-                  value: currentOrder.client_reference,
-                },
-                { label: 'Priority', value: currentOrder.priority },
-                {
-                  label: 'Status',
-                  value: currentOrder.status?.replace('_', ' '),
-                },
-                { label: 'Layer', value: currentOrder.current_layer },
-                {
-                  label: 'Started At',
-                  value: currentOrder.started_at
-                    ? new Date(currentOrder.started_at).toLocaleString()
-                    : 'N/A',
-                },
-                {
-                  label: 'Due Date',
-                  value: currentOrder.due_date
-                    ? new Date(currentOrder.due_date).toLocaleDateString()
-                    : 'N/A',
-                },
-              ].map((item, i) => (
-                <div
-                  key={i}
-                  className="flex justify-between items-center py-1.5 border-b border-slate-50 last:border-0"
-                >
-                  <span className="text-xs text-slate-400">{item.label}</span>
-                  <span className="text-xs font-semibold text-slate-700 capitalize">
-                    {item.value || 'N/A'}
-                  </span>
-                </div>
-              ))}
-              {currentOrder.notes && (
-                <div className="p-2.5 bg-slate-50 rounded-lg mt-2">
-                  <p className="text-[10px] text-slate-400 mb-0.5">Notes</p>
-                  <p className="text-xs text-slate-600">{currentOrder.notes}</p>
+      {/* Reject Modal */}
+      {showReject && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl w-full max-w-md p-4">
+            <h3 className="font-semibold text-sm text-slate-900 mb-3">Reject Order</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] text-slate-500 uppercase">Reason Code *</label>
+                <select value={rejectCode} onChange={(e) => setRejectCode(e.target.value)} className="w-full text-xs p-2 border rounded-lg mt-1">
+                  <option value="">Select reason code...</option>
+                  {REJECTION_CODES.map(c => <option key={c} value={c}>{c.replace('_', ' ')}</option>)}
+                </select>
+              </div>
+              {user?.role === 'qa' && (
+                <div>
+                  <label className="text-[10px] text-slate-500 uppercase">Route To</label>
+                  <select value={routeTo} onChange={(e) => setRouteTo(e.target.value)} className="w-full text-xs p-2 border rounded-lg mt-1">
+                    <option value="">Default (Checker)</option>
+                    <option value="check">Back to Checker</option>
+                    <option value="draw">Back to Drawer</option>
+                  </select>
                 </div>
               )}
+              <div>
+                <label className="text-[10px] text-slate-500 uppercase">Reason (detailed) *</label>
+                <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} className="w-full text-xs p-2 border rounded-lg mt-1 h-20 resize-none" placeholder="Mandatory: describe the issue..." />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleReject} disabled={!rejectCode || rejectReason.length < 5 || submitting} className="flex-1 bg-red-600 text-white text-xs py-2 rounded-lg hover:bg-red-700 disabled:opacity-50">Reject</button>
+                <button onClick={() => setShowReject(false)} className="flex-1 bg-slate-100 text-slate-700 text-xs py-2 rounded-lg hover:bg-slate-200">Cancel</button>
+              </div>
             </div>
-            <div className="px-5 py-3 border-t border-slate-100 flex gap-2">
-              <button
-                onClick={() => setShowOrderDetail(false)}
-                className="flex-1 btn btn-secondary text-xs py-1.5"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  handleCompleteOrder();
-                  setShowOrderDetail(false);
-                }}
-                disabled={completing}
-                className="flex-1 btn btn-success text-xs py-1.5"
-              >
-                <CheckCircle2 className="w-3 h-3" /> Complete
-              </button>
+          </div>
+        </div>
+      )}
+
+      {/* Hold Modal */}
+      {showHold && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl w-full max-w-md p-4">
+            <h3 className="font-semibold text-sm text-slate-900 mb-3">Place on Hold</h3>
+            <div className="space-y-3">
+              <textarea value={holdReason} onChange={(e) => setHoldReason(e.target.value)} className="w-full text-xs p-2 border rounded-lg h-20 resize-none" placeholder="Reason for hold..." />
+              <div className="flex gap-2">
+                <button onClick={handleHold} disabled={holdReason.length < 3 || submitting} className="flex-1 bg-amber-600 text-white text-xs py-2 rounded-lg hover:bg-amber-700 disabled:opacity-50">Hold</button>
+                <button onClick={() => setShowHold(false)} className="flex-1 bg-slate-100 text-slate-700 text-xs py-2 rounded-lg hover:bg-slate-200">Cancel</button>
+              </div>
             </div>
           </div>
         </div>
       )}
     </div>
   );
-};
+}
 
-export default WorkerDashboard;
+function TrendingUp(props: any) {
+  return <Target {...props} />;
+}

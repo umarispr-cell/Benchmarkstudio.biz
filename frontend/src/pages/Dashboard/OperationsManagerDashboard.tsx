@@ -1,194 +1,190 @@
-import { useEffect, useState } from 'react';
-import { useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
-import type { RootState } from '../../store/store';
-import { projectService } from '../../services';
-import {
-  FolderKanban,
-  Users,
-  Clock,
-  CheckCircle,
-  ArrowRight,
-  Eye,
-  Building,
-  TrendingUp,
-} from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { dashboardService, monthLockService, workflowService } from '../../services';
+import type { OpsDashboardData, QueueHealth } from '../../types';
+import { Users, Package, Inbox, CheckCircle, AlertTriangle, Lock, Unlock, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
 
-const OperationsManagerDashboard = () => {
-  const navigate = useNavigate();
-  const { user } = useSelector((state: RootState) => state.auth);
+export default function OperationsManagerDashboard() {
+  const [data, setData] = useState<OpsDashboardData | null>(null);
+  const [selectedProject, setSelectedProject] = useState<number | null>(null);
+  const [queueHealth, setQueueHealth] = useState<QueueHealth | null>(null);
   const [loading, setLoading] = useState(true);
-  const [projects, setProjects] = useState<any[]>([]);
+  const [lockLoading, setLockLoading] = useState(false);
+
+  const loadData = useCallback(async () => {
+    try {
+      const res = await dashboardService.operations();
+      setData(res.data);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+    const interval = setInterval(loadData, 20000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
-  const loadData = async () => {
+  const loadQueueHealth = async (projectId: number) => {
+    if (selectedProject === projectId) { setSelectedProject(null); return; }
+    setSelectedProject(projectId);
     try {
-      setLoading(true);
-      const data = await projectService.getAll();
-      setProjects(data.data);
-    } catch (error) {
-      console.error('Error loading data:', error);
-    } finally {
-      setLoading(false);
-    }
+      const res = await workflowService.queueHealth(projectId);
+      setQueueHealth(res.data);
+    } catch (e) { console.error(e); }
   };
 
-  const getFlag = (c: string) => ({ UK: '🇬🇧', Australia: '🇦🇺', Canada: '🇨🇦', USA: '🇺🇸' }[c] || '🌍');
+  const handleLockMonth = async (projectId: number, month: number, year: number) => {
+    setLockLoading(true);
+    try {
+      await monthLockService.lock(projectId, month, year);
+      loadData();
+    } catch (e) { console.error(e); }
+    finally { setLockLoading(false); }
+  };
 
-  const totalStaff = projects.reduce((s, p) => s + (p.total_staff || 0), 0);
-  const totalPending = projects.reduce((s, p) => s + (p.pending_orders || 0), 0);
-  const totalCompleted = projects.reduce((s, p) => s + (p.completed_today || 0), 0);
+  if (loading) return <div className="flex items-center justify-center h-64"><div className="loading-shimmer w-full max-w-lg h-48 rounded-xl" /></div>;
+  if (!data) return <div className="text-center text-slate-500 py-8">No data available</div>;
 
-  const stats = [
-    { label: 'Projects', value: projects.length, icon: FolderKanban, color: 'text-teal-600', bg: 'bg-teal-50' },
-    { label: 'Active Staff', value: totalStaff, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Pending', value: totalPending, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'Done Today', value: totalCompleted, icon: CheckCircle, color: 'text-violet-600', bg: 'bg-violet-50' },
-  ];
-
-  if (loading) {
-    return (
-      <div className="space-y-4 animate-fade-in">
-        <div className="h-7 w-48 bg-slate-200 rounded loading-shimmer" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="bg-white rounded-xl border border-slate-100 p-4">
-              <div className="animate-pulse space-y-3">
-                <div className="h-3 bg-slate-100 rounded w-16" />
-                <div className="h-6 bg-slate-100 rounded w-12" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      {/* Header */}
-      <div>
-        <h1 className="text-lg font-bold text-slate-900">
-          Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}, {user?.name?.split(' ')[0]}
-        </h1>
-        <p className="text-xs text-slate-500 mt-0.5">Manage your assigned projects and teams</p>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-slate-900">Operations Dashboard</h1>
+          <p className="text-xs text-slate-500">{data.projects?.length || 0} project(s) assigned</p>
+        </div>
+        <button onClick={() => { setLoading(true); loadData(); }} className="text-xs text-teal-600 flex items-center gap-1 hover:text-teal-700">
+          <RefreshCw className="h-3 w-3" /> Refresh
+        </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {stats.map((s, i) => {
-          const Icon = s.icon;
-          return (
-            <div key={i} className="bg-white rounded-xl border border-slate-100 p-4 hover:border-slate-200 transition-colors">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className={`p-1.5 rounded-lg ${s.bg}`}>
-                  <Icon className={`h-3.5 w-3.5 ${s.color}`} />
-                </div>
-                {i === 3 && s.value > 0 && (
-                  <span className="flex items-center gap-0.5 text-[11px] font-medium text-emerald-600">
-                    <TrendingUp className="h-3 w-3" />
-                  </span>
-                )}
+      {/* Overview Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: 'Active Staff', value: data.total_active_staff ?? 0, icon: Users, color: 'text-teal-600 bg-teal-50' },
+          { label: 'Absent', value: data.total_absent ?? 0, icon: AlertTriangle, color: 'text-red-600 bg-red-50' },
+          { label: 'Total Pending', value: data.total_pending ?? 0, icon: Inbox, color: 'text-amber-600 bg-amber-50' },
+          { label: 'Delivered Today', value: data.total_delivered_today ?? 0, icon: CheckCircle, color: 'text-green-600 bg-green-50' },
+        ].map((s, i) => (
+          <div key={i} className="bg-white rounded-xl p-3 border border-slate-100">
+            <div className="flex items-center gap-2 mb-1">
+              <div className={`w-6 h-6 rounded-md flex items-center justify-center ${s.color}`}>
+                <s.icon className="h-3.5 w-3.5" />
               </div>
-              <p className="text-xl font-bold text-slate-900 leading-none">{s.value}</p>
-              <p className="text-[11px] text-slate-400 mt-1">{s.label}</p>
+              <span className="text-[10px] text-slate-500 uppercase">{s.label}</span>
             </div>
-          );
-        })}
-      </div>
-
-      {/* Projects Table */}
-      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-900">My Projects</h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">Projects in your region</p>
+            <div className="text-lg font-bold text-slate-900">{s.value}</div>
           </div>
-          <button onClick={() => navigate('/projects')} className="text-[11px] text-teal-600 font-medium hover:text-teal-700 flex items-center gap-0.5">
-            View All <ArrowRight className="h-3 w-3" />
-          </button>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-slate-50/80">
-                <th className="text-left py-2.5 px-4 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Project</th>
-                <th className="text-left py-2.5 px-4 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Country</th>
-                <th className="text-left py-2.5 px-4 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Department</th>
-                <th className="text-left py-2.5 px-4 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Orders</th>
-                <th className="text-left py-2.5 px-4 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Status</th>
-                <th className="text-right py-2.5 px-4 text-[10px] font-semibold text-slate-400 uppercase tracking-wider"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {projects.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-10">
-                    <FolderKanban className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-sm font-medium text-slate-500">No projects assigned</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Projects will appear here once assigned</p>
-                  </td>
-                </tr>
-              ) : (
-                projects.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="py-2.5 px-4">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          {p.name.charAt(0)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-slate-800 group-hover:text-teal-600 transition-colors truncate">{p.name}</p>
-                          <p className="text-[10px] text-slate-400">{p.code}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-4">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs">{getFlag(p.country)}</span>
-                        <span className="text-xs text-slate-600">{p.country}</span>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-4">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-                        <Building className="w-3 h-3" />
-                        {p.department?.replace('_', ' ') || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-4">
-                      <div className="flex items-center gap-3 text-[11px]">
-                        <span className="flex items-center gap-1 text-amber-600">
-                          <Clock className="w-3 h-3" />{p.pending_orders || 0}
-                        </span>
-                        <span className="flex items-center gap-1 text-emerald-600">
-                          <CheckCircle className="w-3 h-3" />{p.completed_orders || 0}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-4">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700">
-                        <span className="w-1 h-1 rounded-full bg-emerald-500" />
-                        Active
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-4 text-right">
-                      <button onClick={() => navigate('/projects')} className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        ))}
       </div>
+
+      {/* Projects List */}
+      <div className="space-y-3">
+        {(data.projects || []).map((project: any) => (
+          <div key={project.id} className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+            <button
+              onClick={() => loadQueueHealth(project.id)}
+              className="w-full flex items-center justify-between p-3 hover:bg-slate-50"
+            >
+              <div className="flex items-center gap-3">
+                <Package className="h-4 w-4 text-teal-600" />
+                <div className="text-left">
+                  <div className="text-sm font-medium text-slate-900">{project.name}</div>
+                  <div className="text-[10px] text-slate-500">{project.country} · {project.department} · {project.workflow_type}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <div className="text-xs font-medium text-slate-700">{project.pending_count ?? 0} pending</div>
+                  <div className="text-[10px] text-slate-400">{project.staff_count ?? 0} staff</div>
+                </div>
+                {selectedProject === project.id ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+              </div>
+            </button>
+
+            {selectedProject === project.id && queueHealth && (
+              <div className="border-t border-slate-100 p-3 space-y-3">
+                {/* Stage breakdown */}
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase mb-2">Queue by Stage</div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {Object.entries(queueHealth.stages || {}).map(([stage, counts]: [string, any]) => (
+                      <div key={stage} className="bg-slate-50 rounded-lg p-2">
+                        <div className="text-[10px] font-medium text-slate-600">{stage}</div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-amber-600">{counts.queued} queued</span>
+                          <span className="text-xs text-teal-600">{counts.in_progress} active</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Staffing */}
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase mb-2">Staffing</div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {(queueHealth.staffing || []).map((staff: any) => (
+                      <div key={staff.user_id} className="bg-slate-50 rounded-lg p-2 flex items-center justify-between">
+                        <div>
+                          <div className="text-[10px] font-medium text-slate-700">{staff.name}</div>
+                          <div className="text-[10px] text-slate-400">{staff.role}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-slate-700">{staff.wip_count} WIP</div>
+                          <div className={`w-1.5 h-1.5 rounded-full inline-block ${staff.is_absent ? 'bg-red-400' : staff.is_online ? 'bg-green-400' : 'bg-slate-300'}`} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Month Lock */}
+                <div className="flex items-center justify-between bg-slate-50 rounded-lg p-2">
+                  <div className="flex items-center gap-2">
+                    {project.month_locked ? <Lock className="h-3.5 w-3.5 text-red-500" /> : <Unlock className="h-3.5 w-3.5 text-green-500" />}
+                    <span className="text-xs text-slate-600">
+                      {now.toLocaleString('default', { month: 'short' })} {currentYear} — {project.month_locked ? 'Locked' : 'Open'}
+                    </span>
+                  </div>
+                  {!project.month_locked && (
+                    <button
+                      onClick={() => handleLockMonth(project.id, currentMonth, currentYear)}
+                      disabled={lockLoading}
+                      className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded hover:bg-red-100 disabled:opacity-50"
+                    >
+                      Lock Month
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Absentees */}
+      {(data.absentees?.length ?? 0) > 0 && (
+        <div className="bg-white rounded-xl border border-slate-100 p-3">
+          <div className="text-[10px] text-slate-500 uppercase mb-2">Absent Staff</div>
+          <div className="space-y-1.5">
+            {data.absentees!.map((a: any) => (
+              <div key={a.id} className="flex items-center justify-between text-xs">
+                <span className="text-slate-700">{a.name}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400">{a.role}</span>
+                  {a.reassigned_count > 0 && (
+                    <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">{a.reassigned_count} reassigned</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
-};
-
-export default OperationsManagerDashboard;
+}

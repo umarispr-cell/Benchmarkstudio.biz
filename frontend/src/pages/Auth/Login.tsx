@@ -23,8 +23,8 @@ const Login = () => {
     try {
       const response = await authService.login({ email, password });
       dispatch(setCredentials({
-        user: response.user,
-        token: response.token,
+        user: response.data.user,
+        token: response.data.token,
       }));
       navigate('/dashboard');
     } catch (err: any) {

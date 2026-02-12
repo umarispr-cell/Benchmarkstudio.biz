@@ -3,203 +3,223 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreInvoiceRequest;
-use App\Http\Requests\UpdateInvoiceRequest;
-use App\Models\ActivityLog;
 use App\Models\Invoice;
+use App\Models\MonthLock;
+use App\Models\Project;
+use App\Services\AuditService;
 use Illuminate\Http\Request;
 
 class InvoiceController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * Invoice status workflow: draft → prepared → approved → issued → sent
+     */
+    const STATUS_TRANSITIONS = [
+        'draft'    => ['prepared'],
+        'prepared' => ['approved', 'draft'], // Can send back to draft
+        'approved' => ['issued'],
+        'issued'   => ['sent'],
+        'sent'     => [],
+    ];
+
+    /**
+     * GET /invoices
+     * List invoices with filters.
      */
     public function index(Request $request)
     {
-        $query = Invoice::with(['project', 'preparedBy', 'approvedBy']);
+        $user = $request->user();
+        $query = Invoice::with(['project:id,name,code,country', 'preparedBy:id,name', 'approvedBy:id,name']);
 
-        // Filter by project
         if ($request->has('project_id')) {
-            $query->where('project_id', $request->project_id);
+            $query->where('project_id', $request->input('project_id'));
         }
-
-        // Filter by status
         if ($request->has('status')) {
-            $query->where('status', $request->status);
+            $query->where('status', $request->input('status'));
+        }
+        if ($request->has('month') && $request->has('year')) {
+            $query->where('month', $request->input('month'))->where('year', $request->input('year'));
         }
 
-        // Filter by month/year
-        if ($request->has('month')) {
-            $query->where('month', $request->month);
-        }
-
-        if ($request->has('year')) {
-            $query->where('year', $request->year);
-        }
-
-        // Search by invoice number
-        if ($request->has('search')) {
-            $query->where('invoice_number', 'like', '%' . $request->search . '%');
-        }
-
-        $invoices = $query->latest()->paginate($request->per_page ?? 15);
-
-        return response()->json($invoices);
+        return response()->json($query->orderByDesc('created_at')->paginate(25));
     }
 
     /**
-     * Store a newly created resource in storage.
+     * POST /invoices
+     * Create a draft invoice from locked month counts.
+     * Only CEO/Director can create invoices.
      */
-    public function store(StoreInvoiceRequest $request)
+    public function store(Request $request)
     {
-        $data = $request->validated();
-        $data['prepared_by'] = auth()->id();
-
-        $invoice = Invoice::create($data);
-
-        ActivityLog::log('created_invoice', Invoice::class, $invoice->id, null, $invoice->toArray());
-
-        return response()->json([
-            'message' => 'Invoice created successfully',
-            'data' => $invoice->load(['project', 'preparedBy']),
-        ], 201);
-    }
-
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
-    {
-        $invoice = Invoice::with(['project', 'preparedBy', 'approvedBy'])->findOrFail($id);
-
-        return response()->json([
-            'data' => $invoice,
+        $request->validate([
+            'project_id' => 'required|exists:projects,id',
+            'month' => 'required|integer|min:1|max:12',
+            'year' => 'required|integer|min:2020|max:2100',
         ]);
-    }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(UpdateInvoiceRequest $request, string $id)
-    {
-        $invoice = Invoice::findOrFail($id);
-        $oldValues = $invoice->toArray();
+        $user = $request->user();
+        if (!in_array($user->role, ['ceo', 'director'])) {
+            return response()->json(['message' => 'Only CEO/Director can create invoices.'], 403);
+        }
 
-        // Don't allow updating approved or sent invoices
-        if (in_array($invoice->status, ['approved', 'sent'])) {
+        $projectId = $request->input('project_id');
+        $month = $request->input('month');
+        $year = $request->input('year');
+
+        // Check if month is locked
+        $lock = MonthLock::where('project_id', $projectId)
+            ->where('month', $month)
+            ->where('year', $year)
+            ->where('is_locked', true)
+            ->first();
+
+        if (!$lock) {
             return response()->json([
-                'message' => 'Cannot update approved or sent invoices',
-            ], 403);
+                'message' => 'Month must be locked before creating an invoice. Lock the month first.',
+            ], 422);
         }
 
-        $invoice->update($request->validated());
+        // Check for duplicate invoice
+        $existing = Invoice::where('project_id', $projectId)
+            ->where('month', $month)
+            ->where('year', $year)
+            ->first();
 
-        ActivityLog::log('updated_invoice', Invoice::class, $invoice->id, $oldValues, $invoice->toArray());
-
-        return response()->json([
-            'message' => 'Invoice updated successfully',
-            'data' => $invoice->load(['project', 'preparedBy', 'approvedBy']),
-        ]);
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
-    {
-        $invoice = Invoice::findOrFail($id);
-        $oldValues = $invoice->toArray();
-
-        // Don't allow deleting approved or sent invoices
-        if (in_array($invoice->status, ['approved', 'sent'])) {
+        if ($existing) {
             return response()->json([
-                'message' => 'Cannot delete approved or sent invoices',
-            ], 403);
+                'message' => 'Invoice already exists for this month.',
+                'invoice' => $existing,
+            ], 409);
         }
 
-        $invoice->delete();
+        $project = Project::findOrFail($projectId);
 
-        ActivityLog::log('deleted_invoice', Invoice::class, $id, $oldValues, null);
+        // Calculate total from frozen counts + project invoice category config
+        $counts = $lock->frozen_counts;
+        $totalAmount = $this->calculateTotal($counts, $project->invoice_categories_config);
 
-        return response()->json([
-            'message' => 'Invoice deleted successfully',
+        $invoice = Invoice::create([
+            'invoice_number' => 'INV-' . strtoupper($project->code) . '-' . $year . str_pad($month, 2, '0', STR_PAD_LEFT),
+            'project_id' => $projectId,
+            'month' => $month,
+            'year' => $year,
+            'service_counts' => $counts,
+            'total_amount' => $totalAmount,
+            'status' => 'draft',
+            'prepared_by' => $user->id,
+            'locked_month_id' => $lock->id,
         ]);
+
+        AuditService::logInvoiceAction($invoice->id, $projectId, 'INVOICE_CREATED', null, [
+            'status' => 'draft',
+            'total_amount' => $totalAmount,
+        ]);
+
+        return response()->json(['invoice' => $invoice], 201);
     }
 
     /**
-     * Approve an invoice.
+     * GET /invoices/{id}
      */
-    public function approve(string $id)
+    public function show(int $id)
     {
-        $invoice = Invoice::findOrFail($id);
+        $invoice = Invoice::with([
+            'project:id,name,code,country,department',
+            'preparedBy:id,name',
+            'approvedBy:id,name',
+        ])->findOrFail($id);
 
-        if ($invoice->status !== 'pending_approval') {
-            return response()->json([
-                'message' => 'Invoice is not pending approval',
-            ], 400);
-        }
+        return response()->json(['invoice' => $invoice]);
+    }
 
-        $invoice->update([
-            'status' => 'approved',
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
+    /**
+     * POST /invoices/{id}/transition
+     * Advance invoice through workflow: draft→prepared→approved→issued→sent
+     */
+    public function transition(Request $request, int $id)
+    {
+        $request->validate([
+            'to_status' => 'required|string|in:draft,prepared,approved,issued,sent',
         ]);
 
-        ActivityLog::log('approved_invoice', Invoice::class, $invoice->id);
+        $user = $request->user();
+        $invoice = Invoice::findOrFail($id);
+        $toStatus = $request->input('to_status');
+
+        // Validate transition
+        $allowed = self::STATUS_TRANSITIONS[$invoice->status] ?? [];
+        if (!in_array($toStatus, $allowed)) {
+            return response()->json([
+                'message' => "Cannot transition from '{$invoice->status}' to '{$toStatus}'.",
+                'allowed' => $allowed,
+            ], 422);
+        }
+
+        // Only CEO/Director can approve/issue
+        if (in_array($toStatus, ['approved', 'issued', 'sent']) && !in_array($user->role, ['ceo', 'director'])) {
+            return response()->json(['message' => 'Only CEO/Director can approve/issue invoices.'], 403);
+        }
+
+        $before = ['status' => $invoice->status];
+        $updates = ['status' => $toStatus];
+
+        if ($toStatus === 'approved') {
+            $updates['approved_by'] = $user->id;
+            $updates['approved_at'] = now();
+        }
+        if ($toStatus === 'issued') {
+            $updates['issued_by'] = $user->id;
+            $updates['issued_at'] = now();
+        }
+        if ($toStatus === 'sent') {
+            $updates['sent_at'] = now();
+        }
+
+        $invoice->update($updates);
+
+        AuditService::logInvoiceAction($invoice->id, $invoice->project_id, 'INVOICE_' . strtoupper($toStatus), $before, $updates);
 
         return response()->json([
-            'message' => 'Invoice approved successfully',
-            'data' => $invoice->fresh(['project', 'preparedBy', 'approvedBy']),
+            'invoice' => $invoice->fresh(),
+            'message' => "Invoice status changed to '{$toStatus}'.",
         ]);
     }
 
     /**
-     * Submit invoice for approval.
+     * DELETE /invoices/{id}
+     * Only draft invoices can be deleted.
      */
-    public function submitForApproval(string $id)
+    public function destroy(int $id)
     {
         $invoice = Invoice::findOrFail($id);
 
         if ($invoice->status !== 'draft') {
-            return response()->json([
-                'message' => 'Only draft invoices can be submitted for approval',
-            ], 400);
+            return response()->json(['message' => 'Only draft invoices can be deleted.'], 422);
         }
 
-        $invoice->update([
-            'status' => 'pending_approval',
-        ]);
+        AuditService::logInvoiceAction($invoice->id, $invoice->project_id, 'INVOICE_DELETED');
+        $invoice->delete();
 
-        ActivityLog::log('submitted_invoice_for_approval', Invoice::class, $invoice->id);
-
-        return response()->json([
-            'message' => 'Invoice submitted for approval',
-            'data' => $invoice,
-        ]);
+        return response()->json(['message' => 'Invoice deleted.']);
     }
 
-    /**
-     * Mark invoice as sent.
-     */
-    public function markAsSent(string $id)
-    {
-        $invoice = Invoice::findOrFail($id);
+    // ── Private ──
 
-        if ($invoice->status !== 'approved') {
-            return response()->json([
-                'message' => 'Only approved invoices can be marked as sent',
-            ], 400);
+    private function calculateTotal(?array $counts, ?array $categoryConfig): float
+    {
+        if (!$counts || !$categoryConfig) {
+            // Simple count-based calculation
+            return ($counts['delivered'] ?? 0) * 10.0; // Default rate
         }
 
-        $invoice->update([
-            'status' => 'sent',
-        ]);
+        $total = 0;
+        foreach ($categoryConfig as $category) {
+            $rate = $category['rate'] ?? 0;
+            $countKey = $category['count_key'] ?? 'delivered';
+            $count = $counts[$countKey] ?? $counts['delivered'] ?? 0;
+            $total += $rate * $count;
+        }
 
-        ActivityLog::log('sent_invoice', Invoice::class, $invoice->id);
-
-        return response()->json([
-            'message' => 'Invoice marked as sent',
-            'data' => $invoice,
-        ]);
+        return round($total, 2);
     }
 }

@@ -19,18 +19,11 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
-        'name',
-        'email',
-        'password',
-        'role',
-        'country',
-        'department',
-        'project_id',
-        'team_id',
-        'layer',
-        'is_active',
-        'last_activity',
-        'inactive_days',
+        'name', 'email', 'password', 'role', 'country', 'department',
+        'project_id', 'team_id', 'layer', 'is_active',
+        'last_activity', 'inactive_days',
+        'current_session_token', 'wip_count', 'today_completed',
+        'shift_start', 'shift_end', 'is_absent', 'daily_target',
     ];
 
     /**
@@ -88,5 +81,15 @@ class User extends Authenticatable
     public function activityLogs()
     {
         return $this->hasMany(ActivityLog::class);
+    }
+
+    public function sessions()
+    {
+        return $this->hasMany(UserSession::class);
+    }
+
+    public function workItems()
+    {
+        return $this->hasMany(WorkItem::class, 'assigned_user_id');
     }
 }

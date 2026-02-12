@@ -5,15 +5,17 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\UserSession;
+use App\Services\AuditService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
     /**
-     * Handle user login
+     * Login — enforces single active session.
+     * If the user is already logged in elsewhere, the OLD session is invalidated
+     * and this new login takes over (with a warning in the response).
      */
     public function login(Request $request)
     {
@@ -25,96 +27,112 @@ class AuthController extends Controller
         $user = User::where('email', $request->email)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
+            if ($user) {
+                AuditService::logLogin($user->id, false, 'invalid_password');
+            }
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
         }
 
-        // Check if user is active
         if (!$user->is_active) {
+            AuditService::logLogin($user->id, false, 'account_deactivated');
             throw ValidationException::withMessages([
                 'email' => ['This account has been deactivated.'],
             ]);
         }
 
-        // Check for existing active session
-        $existingSession = UserSession::where('user_id', $user->id)->first();
-        if ($existingSession) {
-            // Optionally, you can force logout the existing session
-            // For now, we'll return an error
-            return response()->json([
-                'message' => 'This account is already logged in on another device. Please logout from the other device first.',
-            ], 409); // 409 Conflict
+        $hadExistingSession = false;
+
+        // Force-invalidate any existing sessions (single session enforcement)
+        $existingSessions = UserSession::where('user_id', $user->id)->get();
+        if ($existingSessions->count() > 0) {
+            $hadExistingSession = true;
+            UserSession::where('user_id', $user->id)->delete();
+            $user->tokens()->delete(); // Revoke all old tokens
+            AuditService::log($user->id, 'SESSION_FORCE_INVALIDATED', 'User', $user->id, null, null, [
+                'reason' => 'new_login_from_different_device',
+                'ip' => $request->ip(),
+            ]);
         }
 
-        // Create token
+        // Create new token
         $token = $user->createToken('auth-token')->plainTextToken;
+
+        // Store token hash for session validation
+        $tokenParts = explode('|', $token);
+        $tokenHash = hash('sha256', end($tokenParts));
+        $user->update([
+            'current_session_token' => $tokenHash,
+            'last_activity' => now(),
+        ]);
 
         // Create session record
         UserSession::create([
             'user_id' => $user->id,
-            'session_id' => session()->getId(),
+            'session_id' => $tokenHash,
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
             'last_activity' => now(),
         ]);
 
-        // Update last activity
-        $user->update(['last_activity' => now()]);
+        AuditService::logLogin($user->id, true);
 
-        return response()->json([
-            'user' => $user,
+        $response = [
+            'user' => $user->fresh(),
             'token' => $token,
-        ]);
+        ];
+
+        if ($hadExistingSession) {
+            $response['warning'] = 'You were logged in on another device. That session has been terminated.';
+        }
+
+        return response()->json($response);
     }
 
     /**
-     * Handle user logout
+     * Logout — clears session + tokens + audit.
      */
     public function logout(Request $request)
     {
         $user = $request->user();
 
-        // Delete session record
         UserSession::where('user_id', $user->id)->delete();
-
-        // Revoke all tokens
         $user->tokens()->delete();
+        $user->update(['current_session_token' => null, 'wip_count' => 0]);
 
-        return response()->json([
-            'message' => 'Logged out successfully',
-        ]);
+        // Reassign any in-progress work
+        \App\Services\AssignmentEngine::reassignFromUser($user, $user->id);
+
+        AuditService::logLogout($user->id);
+
+        return response()->json(['message' => 'Logged out successfully']);
     }
 
     /**
-     * Get authenticated user profile
+     * Get authenticated user profile with project context.
      */
     public function profile(Request $request)
     {
-        return response()->json($request->user());
+        $user = $request->user()->load(['project', 'team']);
+        return response()->json($user);
     }
 
     /**
-     * Check if session is valid
+     * Session heartbeat — validates session is still active.
      */
     public function sessionCheck(Request $request)
     {
         $user = $request->user();
-
         if (!$user) {
             return response()->json(['valid' => false], 401);
         }
 
-        // Check if session exists
-        $session = UserSession::where('user_id', $user->id)
-            ->where('session_id', session()->getId())
-            ->first();
-
+        $session = UserSession::where('user_id', $user->id)->first();
         if (!$session) {
-            return response()->json(['valid' => false], 401);
+            return response()->json(['valid' => false, 'reason' => 'session_not_found'], 401);
         }
 
-        // Update last activity
         $session->update(['last_activity' => now()]);
         $user->update(['last_activity' => now()]);
 
@@ -122,20 +140,30 @@ class AuthController extends Controller
     }
 
     /**
-     * Refresh authentication token
+     * Force logout a specific user (admin/ops action).
      */
-    public function refresh(Request $request)
+    public function forceLogout(Request $request, int $userId)
     {
-        $user = $request->user();
+        $actor = $request->user();
+        if (!in_array($actor->role, ['ceo', 'director', 'operations_manager', 'admin'])) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
 
-        // Revoke old tokens
-        $user->tokens()->delete();
+        $target = User::findOrFail($userId);
 
-        // Create new token
-        $token = $user->createToken('auth-token')->plainTextToken;
+        UserSession::where('user_id', $target->id)->delete();
+        $target->tokens()->delete();
+        $target->update(['current_session_token' => null]);
+
+        // Reassign work
+        $reassigned = \App\Services\AssignmentEngine::reassignFromUser($target, $actor->id);
+
+        AuditService::log($actor->id, 'FORCE_LOGOUT', 'User', $target->id, null, null, [
+            'reassigned_orders' => $reassigned,
+        ]);
 
         return response()->json([
-            'token' => $token,
+            'message' => "User forcibly logged out. {$reassigned} orders reassigned to queue.",
         ]);
     }
 }

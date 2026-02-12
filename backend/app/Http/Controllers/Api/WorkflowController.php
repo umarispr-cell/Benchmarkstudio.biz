@@ -3,613 +3,556 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreOrderRequest;
-use App\Http\Requests\UpdateOrderRequest;
-use App\Models\ActivityLog;
 use App\Models\Order;
-use App\Models\User;
-use App\Models\WorkAssignment;
+use App\Models\WorkItem;
+use App\Models\Project;
+use App\Services\StateMachine;
+use App\Services\AssignmentEngine;
+use App\Services\AuditService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class WorkflowController extends Controller
 {
+    // ═══════════════════════════════════════════
+    // WORKER ENDPOINTS (Production roles)
+    // ═══════════════════════════════════════════
+
     /**
-     * Get work queue for a user.
+     * GET /workflow/start-next
+     * Auto-assign the next order from the user's queue.
+     * No manual picking — this is the ONLY way workers get work.
      */
-    public function queue(Request $request)
+    public function startNext(Request $request)
     {
-        $user = auth()->user();
-        
-        $query = Order::with(['project', 'team', 'assignedUser']);
+        $user = $request->user();
 
-        // For workers, show only their assigned orders
-        if (in_array($user->role, ['qa', 'checker', 'drawer', 'designer'])) {
-            $query->where('assigned_to', $user->id);
-        } else {
-            // For managers, show all orders in their scope
-            if ($user->country) {
-                $query->whereHas('project', function ($q) use ($user) {
-                    $q->where('country', $user->country);
-                });
-            }
-            
-            if ($user->department) {
-                $query->whereHas('project', function ($q) use ($user) {
-                    $q->where('department', $user->department);
-                });
-            }
-            
-            if ($user->project_id) {
-                $query->where('project_id', $user->project_id);
-            }
+        if (!in_array($user->role, ['drawer', 'checker', 'qa', 'designer'])) {
+            return response()->json(['message' => 'Only production roles can start work.'], 403);
         }
 
-        // Filter by status
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
+        if (!$user->project_id) {
+            return response()->json(['message' => 'You are not assigned to a project.'], 422);
         }
 
-        // Filter by layer
-        if ($request->has('layer')) {
-            $query->where('current_layer', $request->layer);
+        $order = AssignmentEngine::startNext($user);
+
+        if (!$order) {
+            return response()->json([
+                'message' => 'No orders available in your queue, or you are at max WIP capacity.',
+                'queue_empty' => true,
+            ]);
         }
 
-        // Filter by priority
-        if ($request->has('priority')) {
-            $query->where('priority', $request->priority);
-        }
-
-        $orders = $query->orderBy('priority', 'desc')
-            ->orderBy('received_at', 'asc')
-            ->paginate($request->per_page ?? 20);
-
-        return response()->json($orders);
+        return response()->json([
+            'order' => $order->load(['project', 'team', 'workItems']),
+            'message' => 'Order assigned successfully.',
+        ]);
     }
 
     /**
-     * Create a new order.
+     * GET /workflow/my-current
+     * Get the user's currently assigned in-progress order.
      */
-    public function createOrder(StoreOrderRequest $request)
+    public function myCurrent(Request $request)
     {
-        $order = Order::create($request->validated());
+        $user = $request->user();
 
-        ActivityLog::log('created_order', Order::class, $order->id, null, $order->toArray());
+        $order = Order::where('assigned_to', $user->id)
+            ->whereIn('workflow_state', ['IN_DRAW', 'IN_CHECK', 'IN_QA', 'IN_DESIGN'])
+            ->with(['project', 'team'])
+            ->first();
+
+        return response()->json(['order' => $order]);
+    }
+
+    /**
+     * POST /workflow/orders/{id}/submit
+     * Submit completed work to the next stage.
+     */
+    public function submitWork(Request $request, int $id)
+    {
+        $user = $request->user();
+        $order = Order::findOrFail($id);
+
+        // Verify the user is assigned to this order
+        if ($order->assigned_to !== $user->id) {
+            return response()->json(['message' => 'This order is not assigned to you.'], 403);
+        }
+
+        // Verify order is in an IN_ state
+        if (!str_starts_with($order->workflow_state, 'IN_')) {
+            return response()->json(['message' => 'Order is not in a workable state.'], 422);
+        }
+
+        // Check project isolation
+        if ($order->project_id !== $user->project_id) {
+            return response()->json(['message' => 'Project isolation violation.'], 403);
+        }
+
+        $comments = $request->input('comments');
+        $order = AssignmentEngine::submitWork($order, $user, $comments);
 
         return response()->json([
-            'message' => 'Order created successfully',
-            'data' => $order->load(['project', 'team', 'assignedUser']),
+            'order' => $order,
+            'message' => 'Work submitted successfully.',
+        ]);
+    }
+
+    /**
+     * POST /workflow/orders/{id}/reject
+     * Reject an order (checker/QA only) with mandatory reason.
+     */
+    public function rejectOrder(Request $request, int $id)
+    {
+        $request->validate([
+            'reason' => 'required|string|min:5',
+            'rejection_code' => 'required|string|in:quality,incomplete,wrong_specs,rework,formatting,missing_info',
+            'route_to' => 'nullable|string|in:draw,check,design',
+        ]);
+
+        $user = $request->user();
+        $order = Order::findOrFail($id);
+
+        if ($order->assigned_to !== $user->id) {
+            return response()->json(['message' => 'This order is not assigned to you.'], 403);
+        }
+
+        if (!in_array($user->role, ['checker', 'qa'])) {
+            return response()->json(['message' => 'Only checkers and QA can reject orders.'], 403);
+        }
+
+        if (!in_array($order->workflow_state, ['IN_CHECK', 'IN_QA'])) {
+            return response()->json(['message' => 'Order is not in a rejectable state.'], 422);
+        }
+
+        $order = AssignmentEngine::rejectOrder(
+            $order,
+            $user,
+            $request->input('reason'),
+            $request->input('rejection_code'),
+            $request->input('route_to')
+        );
+
+        return response()->json([
+            'order' => $order,
+            'message' => 'Order rejected and returned to queue.',
+        ]);
+    }
+
+    /**
+     * POST /workflow/orders/{id}/hold
+     * Place an order on hold (checker/QA/ops only).
+     */
+    public function holdOrder(Request $request, int $id)
+    {
+        $request->validate([
+            'hold_reason' => 'required|string|min:3',
+        ]);
+
+        $user = $request->user();
+        $order = Order::findOrFail($id);
+
+        if (!in_array($user->role, StateMachine::HOLD_ALLOWED_ROLES)) {
+            return response()->json(['message' => 'You are not allowed to place orders on hold.'], 403);
+        }
+
+        if (!StateMachine::canTransition($order, 'ON_HOLD')) {
+            return response()->json(['message' => 'Cannot put this order on hold from its current state.'], 422);
+        }
+
+        // If user had this assigned, release it
+        if ($order->assigned_to === $user->id) {
+            $user->decrement('wip_count');
+        }
+
+        StateMachine::transition($order, 'ON_HOLD', $user->id, [
+            'hold_reason' => $request->input('hold_reason'),
+        ]);
+
+        return response()->json([
+            'order' => $order->fresh(),
+            'message' => 'Order placed on hold.',
+        ]);
+    }
+
+    /**
+     * POST /workflow/orders/{id}/resume
+     * Resume an order from ON_HOLD.
+     */
+    public function resumeOrder(Request $request, int $id)
+    {
+        $user = $request->user();
+        $order = Order::findOrFail($id);
+
+        if ($order->workflow_state !== 'ON_HOLD') {
+            return response()->json(['message' => 'Order is not on hold.'], 422);
+        }
+
+        if (!in_array($user->role, ['operations_manager', 'director', 'ceo'])) {
+            return response()->json(['message' => 'Only managers can resume held orders.'], 403);
+        }
+
+        // Determine which queue to return to based on workflow type
+        $queueState = $order->workflow_type === 'PH_2_LAYER' ? 'QUEUED_DESIGN' : 'QUEUED_DRAW';
+
+        StateMachine::transition($order, $queueState, $user->id, ['resumed_from_hold' => true]);
+
+        return response()->json([
+            'order' => $order->fresh(),
+            'message' => 'Order resumed.',
+        ]);
+    }
+
+    /**
+     * GET /workflow/my-stats
+     * Worker's today stats: completed, target, time.
+     */
+    public function myStats(Request $request)
+    {
+        $user = $request->user();
+
+        $todayCompleted = WorkItem::where('assigned_user_id', $user->id)
+            ->where('status', 'completed')
+            ->whereDate('completed_at', today())
+            ->count();
+
+        $queueCount = 0;
+        if ($user->project_id && in_array($user->role, ['drawer', 'checker', 'qa', 'designer'])) {
+            $project = $user->project;
+            $queueStates = StateMachine::getQueuedStates($project->workflow_type ?? 'FP_3_LAYER');
+            $roleQueueState = collect($queueStates)->first(function ($state) use ($user) {
+                $role = StateMachine::getRoleForState($state);
+                return $role === $user->role;
+            });
+            if ($roleQueueState) {
+                $queueCount = Order::where('project_id', $user->project_id)
+                    ->where('workflow_state', $roleQueueState)
+                    ->count();
+            }
+        }
+
+        return response()->json([
+            'today_completed' => $todayCompleted,
+            'daily_target' => $user->daily_target ?? 0,
+            'wip_count' => $user->wip_count,
+            'queue_count' => $queueCount,
+            'is_absent' => $user->is_absent,
+        ]);
+    }
+
+    // ═══════════════════════════════════════════
+    // MANAGEMENT ENDPOINTS (Ops/Director/CEO)
+    // ═══════════════════════════════════════════
+
+    /**
+     * GET /workflow/{projectId}/queue-health
+     * Queue health for a project: counts per state, oldest item, SLA breaches.
+     */
+    public function queueHealth(Request $request, int $projectId)
+    {
+        $project = Project::findOrFail($projectId);
+
+        $states = $project->workflow_type === 'PH_2_LAYER'
+            ? StateMachine::PH_STATES
+            : StateMachine::FP_STATES;
+
+        $counts = [];
+        foreach ($states as $state) {
+            $query = Order::where('project_id', $projectId)->where('workflow_state', $state);
+            $counts[$state] = [
+                'count' => $query->count(),
+                'oldest' => $query->min('received_at'),
+            ];
+        }
+
+        // SLA breaches (orders past due_date)
+        $slaBreaches = Order::where('project_id', $projectId)
+            ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED'])
+            ->whereNotNull('due_date')
+            ->where('due_date', '<', now())
+            ->count();
+
+        return response()->json([
+            'project_id' => $projectId,
+            'workflow_type' => $project->workflow_type,
+            'state_counts' => $counts,
+            'sla_breaches' => $slaBreaches,
+            'total_pending' => Order::where('project_id', $projectId)
+                ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED'])
+                ->count(),
+            'total_delivered' => Order::where('project_id', $projectId)
+                ->where('workflow_state', 'DELIVERED')
+                ->count(),
+        ]);
+    }
+
+    /**
+     * GET /workflow/{projectId}/staffing
+     * Staffing overview for a project.
+     */
+    public function staffing(Request $request, int $projectId)
+    {
+        $project = Project::findOrFail($projectId);
+
+        $stages = StateMachine::getStages($project->workflow_type);
+        $staffing = [];
+
+        foreach ($stages as $stage) {
+            $role = StateMachine::STAGE_TO_ROLE[$stage];
+            $users = \App\Models\User::where('project_id', $projectId)
+                ->where('role', $role)
+                ->get(['id', 'name', 'role', 'team_id', 'is_active', 'is_absent', 'wip_count', 'today_completed', 'last_activity', 'daily_target']);
+
+            $staffing[$stage] = [
+                'role' => $role,
+                'total' => $users->count(),
+                'active' => $users->where('is_active', true)->where('is_absent', false)->count(),
+                'absent' => $users->where('is_absent', true)->count(),
+                'users' => $users,
+            ];
+        }
+
+        return response()->json([
+            'project_id' => $projectId,
+            'staffing' => $staffing,
+        ]);
+    }
+
+    /**
+     * POST /workflow/orders/{id}/reassign
+     * Manually reassign an order (management only).
+     */
+    public function reassignOrder(Request $request, int $id)
+    {
+        $request->validate([
+            'user_id' => 'nullable|exists:users,id',
+            'reason' => 'required|string',
+        ]);
+
+        $actor = $request->user();
+        $order = Order::findOrFail($id);
+
+        $oldAssignee = $order->assigned_to;
+
+        // If reassigning to null, return to queue
+        if (!$request->input('user_id')) {
+            $queueState = str_replace('IN_', 'QUEUED_', $order->workflow_state);
+            if (str_starts_with($order->workflow_state, 'IN_')) {
+                // Abandon current work item
+                WorkItem::where('order_id', $order->id)
+                    ->where('assigned_user_id', $oldAssignee)
+                    ->where('status', 'in_progress')
+                    ->update(['status' => 'abandoned', 'completed_at' => now()]);
+
+                if ($oldAssignee) {
+                    \App\Models\User::where('id', $oldAssignee)->decrement('wip_count');
+                }
+
+                StateMachine::transition($order, $queueState, $actor->id, [
+                    'reason' => $request->input('reason'),
+                ]);
+            }
+        } else {
+            $newUser = \App\Models\User::findOrFail($request->input('user_id'));
+            $order->update(['assigned_to' => $newUser->id, 'team_id' => $newUser->team_id]);
+
+            AuditService::logAssignment(
+                $order->id,
+                $order->project_id,
+                $oldAssignee,
+                $newUser->id,
+                $request->input('reason')
+            );
+        }
+
+        return response()->json([
+            'order' => $order->fresh(),
+            'message' => 'Order reassigned.',
+        ]);
+    }
+
+    /**
+     * POST /workflow/receive
+     * Receive a new order into the system (creates in RECEIVED state).
+     */
+    public function receiveOrder(Request $request)
+    {
+        $request->validate([
+            'project_id' => 'required|exists:projects,id',
+            'client_reference' => 'required|string',
+            'priority' => 'nullable|in:low,normal,high,urgent',
+            'due_date' => 'nullable|date',
+            'metadata' => 'nullable|array',
+        ]);
+
+        $project = Project::findOrFail($request->input('project_id'));
+
+        // Idempotency check: client_reference + project
+        $existing = Order::where('project_id', $project->id)
+            ->where('client_reference', $request->input('client_reference'))
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'message' => 'Duplicate order: this client reference already exists for this project.',
+                'existing_order' => $existing,
+            ], 409);
+        }
+
+        $order = DB::transaction(function () use ($request, $project) {
+            $order = Order::create([
+                'order_number' => 'ORD-' . strtoupper(uniqid()),
+                'project_id' => $project->id,
+                'client_reference' => $request->input('client_reference'),
+                'workflow_state' => 'RECEIVED',
+                'workflow_type' => $project->workflow_type,
+                'status' => 'pending',
+                'priority' => $request->input('priority', 'normal'),
+                'due_date' => $request->input('due_date'),
+                'received_at' => now(),
+                'metadata' => $request->input('metadata'),
+            ]);
+
+            // Auto-advance to first queue
+            $firstQueue = $project->workflow_type === 'PH_2_LAYER' ? 'QUEUED_DESIGN' : 'QUEUED_DRAW';
+            StateMachine::transition($order, $firstQueue, auth()->id());
+
+            return $order;
+        });
+
+        return response()->json([
+            'order' => $order->fresh(),
+            'message' => 'Order received and queued.',
         ], 201);
     }
 
     /**
-     * Update an order.
+     * GET /workflow/orders/{id}
+     * Get order details with role-based field visibility.
      */
-    public function updateOrder(UpdateOrderRequest $request, string $id)
+    public function orderDetails(Request $request, int $id)
     {
-        $order = Order::findOrFail($id);
-        $oldValues = $order->toArray();
-
-        $order->update($request->validated());
-
-        ActivityLog::log('updated_order', Order::class, $order->id, $oldValues, $order->toArray());
-
-        return response()->json([
-            'message' => 'Order updated successfully',
-            'data' => $order->load(['project', 'team', 'assignedUser']),
-        ]);
-    }
-
-    /**
-     * Assign order to a user.
-     */
-    public function assignOrder(Request $request, string $id)
-    {
-        $request->validate([
-            'user_id' => 'required|exists:users,id',
-        ]);
-
-        $order = Order::findOrFail($id);
-        $user = User::findOrFail($request->user_id);
-
-        $oldAssignee = $order->assigned_to;
-        
-        $order->update([
-            'assigned_to' => $user->id,
-            'team_id' => $user->team_id,
-            'status' => 'in-progress',
-            'started_at' => $order->started_at ?? now(),
-        ]);
-
-        // Create work assignment
-        WorkAssignment::create([
-            'order_id' => $order->id,
-            'user_id' => $user->id,
-            'layer' => $order->current_layer,
-            'assigned_at' => now(),
-            'status' => 'assigned',
-        ]);
-
-        ActivityLog::log('assigned_order', Order::class, $order->id, 
-            ['assigned_to' => $oldAssignee],
-            ['assigned_to' => $user->id]
-        );
-
-        return response()->json([
-            'message' => 'Order assigned successfully',
-            'data' => $order->fresh(['project', 'team', 'assignedUser']),
-        ]);
-    }
-
-    /**
-     * Start working on an order.
-     */
-    public function startOrder(string $id)
-    {
-        $order = Order::findOrFail($id);
-        $user = auth()->user();
-
-        if ($order->assigned_to !== $user->id) {
-            return response()->json([
-                'message' => 'You are not assigned to this order',
-            ], 403);
-        }
-
-        $order->update([
-            'status' => 'in-progress',
-            'started_at' => now(),
-        ]);
-
-        // Update work assignment
-        WorkAssignment::where('order_id', $order->id)
-            ->where('user_id', $user->id)
-            ->where('layer', $order->current_layer)
-            ->update([
-                'status' => 'in-progress',
-                'started_at' => now(),
-            ]);
-
-        ActivityLog::log('started_order', Order::class, $order->id);
-
-        return response()->json([
-            'message' => 'Order started',
-            'data' => $order,
-        ]);
-    }
-
-    /**
-     * Complete an order.
-     */
-    public function completeOrder(Request $request, string $id)
-    {
-        $order = Order::findOrFail($id);
-        $user = auth()->user();
-
-        if ($order->assigned_to !== $user->id) {
-            return response()->json([
-                'message' => 'You are not assigned to this order',
-            ], 403);
-        }
-
-        // Update work assignment
-        WorkAssignment::where('order_id', $order->id)
-            ->where('user_id', $user->id)
-            ->where('layer', $order->current_layer)
-            ->update([
-                'status' => 'completed',
-                'completed_at' => now(),
-            ]);
-
-        // Check if this is the final layer
-        $project = $order->project;
-        $workflowLayers = $project->workflow_layers;
-        $currentLayerIndex = array_search($order->current_layer, $workflowLayers);
-
-        if ($currentLayerIndex === count($workflowLayers) - 1) {
-            // Final layer - complete the order
-            $order->update([
-                'status' => 'completed',
-                'completed_at' => now(),
-                'assigned_to' => null,
-            ]);
-        } else {
-            // Move to next layer
-            $nextLayer = $workflowLayers[$currentLayerIndex + 1];
-            $order->update([
-                'current_layer' => $nextLayer,
-                'status' => 'pending',
-                'assigned_to' => null,
-            ]);
-        }
-
-        ActivityLog::log('completed_order_layer', Order::class, $order->id, 
-            ['layer' => $order->current_layer],
-            ['layer' => $order->current_layer ?? 'completed']
-        );
-
-        return response()->json([
-            'message' => 'Order completed successfully',
-            'data' => $order->fresh(['project', 'team', 'assignedUser']),
-        ]);
-    }
-
-    /**
-     * Reassign orders from inactive user.
-     */
-    public function reassignOrders(Request $request)
-    {
-        $request->validate([
-            'from_user_id' => 'required|exists:users,id',
-            'to_user_id' => 'required|exists:users,id',
-        ]);
-
-        $fromUser = User::findOrFail($request->from_user_id);
-        $toUser = User::findOrFail($request->to_user_id);
-
-        $orders = Order::where('assigned_to', $fromUser->id)
-            ->where('status', '!=', 'completed')
-            ->get();
-
-        foreach ($orders as $order) {
-            $order->update([
-                'assigned_to' => $toUser->id,
-                'team_id' => $toUser->team_id,
-            ]);
-
-            WorkAssignment::create([
-                'order_id' => $order->id,
-                'user_id' => $toUser->id,
-                'layer' => $order->current_layer,
-                'assigned_at' => now(),
-                'status' => 'assigned',
-            ]);
-        }
-
-        ActivityLog::log('reassigned_orders', null, null,
-            ['from_user' => $fromUser->id, 'count' => $orders->count()],
-            ['to_user' => $toUser->id]
-        );
-
-        return response()->json([
-            'message' => "Successfully reassigned {$orders->count()} orders",
-            'count' => $orders->count(),
-        ]);
-    }
-
-    /**
-     * Get order details.
-     */
-    public function getOrder(string $id)
-    {
-        $order = Order::with([
-            'project',
-            'team',
-            'assignedUser',
-            'workAssignments.user'
-        ])->findOrFail($id);
-
-        return response()->json([
-            'data' => $order,
-        ]);
-    }
-
-    /**
-     * Get order details by id (alias).
-     */
-    public function orderDetails(string $id)
-    {
-        return $this->getOrder($id);
-    }
-
-    /**
-     * Get assigned order for current worker.
-     */
-    public function assignedOrder()
-    {
-        $user = auth()->user();
-        
-        $order = Order::with(['project', 'team'])
-            ->where('assigned_to', $user->id)
-            ->whereIn('status', ['pending', 'in-progress'])
-            ->orderBy('priority', 'desc')
-            ->orderBy('received_at', 'asc')
-            ->first();
-
-        if (!$order) {
-            return response()->json([
-                'message' => 'No order currently assigned',
-                'data' => null,
-            ]);
-        }
-
-        return response()->json([
-            'data' => $order,
-        ]);
-    }
-
-    /**
-     * Submit order for QA review.
-     */
-    public function submitOrder(Request $request, string $id)
-    {
-        return $this->completeOrder($request, $id);
-    }
-
-    /**
-     * Reassign a specific order to another user.
-     */
-    public function reassignOrder(Request $request, string $id)
-    {
-        $request->validate([
-            'user_id' => 'required|exists:users,id',
-        ]);
-
-        $order = Order::findOrFail($id);
-        $toUser = User::findOrFail($request->user_id);
-
-        $oldAssignee = $order->assigned_to;
-        
-        $order->update([
-            'assigned_to' => $toUser->id,
-            'team_id' => $toUser->team_id,
-        ]);
-
-        WorkAssignment::create([
-            'order_id' => $order->id,
-            'user_id' => $toUser->id,
-            'layer' => $order->current_layer,
-            'assigned_at' => now(),
-            'status' => 'assigned',
-        ]);
-
-        ActivityLog::log('reassigned_order', Order::class, $order->id,
-            ['assigned_to' => $oldAssignee],
-            ['assigned_to' => $toUser->id]
-        );
-
-        return response()->json([
-            'message' => 'Order reassigned successfully',
-            'data' => $order->fresh(['project', 'team', 'assignedUser']),
-        ]);
-    }
-
-    /**
-     * Get queues for a project.
-     */
-    public function queues(string $projectId)
-    {
-        $orders = Order::with(['team', 'assignedUser'])
-            ->where('project_id', $projectId)
-            ->orderBy('priority', 'desc')
-            ->orderBy('received_at', 'asc')
-            ->paginate(20);
-
-        return response()->json($orders);
-    }
-
-    /**
-     * Reject an order and send back to designer.
-     */
-    public function rejectOrder(Request $request, string $id)
-    {
-        $request->validate([
-            'reason' => 'required|string|min:10',
-            'rejection_type' => 'required|in:quality,incomplete,incorrect,other',
-        ]);
-
-        $order = Order::findOrFail($id);
-        $user = auth()->user();
-
-        // Only checker, QA, or supervisor can reject
-        if (!in_array($user->role, ['checker', 'qa', 'operations_manager', 'director', 'ceo'])) {
-            return response()->json([
-                'message' => 'You do not have permission to reject orders',
-            ], 403);
-        }
-
-        $previousLayer = $order->current_layer;
-        $previousAssignee = $order->assigned_to;
-
-        $order->reject($user->id, $request->reason, $request->rejection_type);
-
-        ActivityLog::log('rejected_order', Order::class, $order->id, 
-            [
-                'previous_layer' => $previousLayer,
-                'previous_assignee' => $previousAssignee,
-            ],
-            [
-                'rejection_reason' => $request->reason,
-                'rejection_type' => $request->rejection_type,
-                'recheck_count' => $order->recheck_count,
-            ]
-        );
-
-        return response()->json([
-            'message' => 'Order rejected and sent back to designer',
-            'data' => $order->fresh(['project', 'team', 'assignedUser', 'rejectedBy']),
-        ]);
-    }
-
-    /**
-     * Mark order as self-corrected by checker.
-     */
-    public function selfCorrectOrder(Request $request, string $id)
-    {
-        $request->validate([
-            'notes' => 'nullable|string',
-        ]);
-
-        $order = Order::findOrFail($id);
-        $user = auth()->user();
-
-        // Only checker can self-correct
-        if ($user->role !== 'checker') {
-            return response()->json([
-                'message' => 'Only checkers can self-correct orders',
-            ], 403);
-        }
-
-        $order->markSelfCorrected();
-
-        ActivityLog::log('self_corrected_order', Order::class, $order->id, 
-            null,
-            ['notes' => $request->notes]
-        );
-
-        return response()->json([
-            'message' => 'Order marked as self-corrected',
-            'data' => $order,
-        ]);
-    }
-
-    /**
-     * Get rejected orders that need rework.
-     */
-    public function rejectedOrders(Request $request)
-    {
-        $user = auth()->user();
-
-        $query = Order::with(['project', 'team', 'assignedUser', 'rejectedBy'])
-            ->needsRecheck();
-
-        // Scope by user's access
-        if (in_array($user->role, ['drawer', 'designer'])) {
-            // Show orders that were rejected and are now pending for this layer
-            $query->where('current_layer', $user->layer ?? $user->role);
-        } elseif ($user->project_id) {
-            $query->where('project_id', $user->project_id);
-        } elseif ($user->country) {
-            $query->whereHas('project', function ($q) use ($user) {
-                $q->where('country', $user->country);
-            });
-        }
-
-        $orders = $query->orderBy('recheck_count', 'desc')
-            ->orderBy('rejected_at', 'desc')
-            ->paginate(20);
-
-        return response()->json($orders);
-    }
-
-    /**
-     * Get orders pending sync to client portal.
-     */
-    public function unsyncedOrders(Request $request)
-    {
-        $user = auth()->user();
-
-        $query = Order::with(['project'])
-            ->unsynced();
-
-        if ($user->project_id) {
-            $query->where('project_id', $user->project_id);
-        } elseif ($user->country) {
-            $query->whereHas('project', function ($q) use ($user) {
-                $q->where('country', $user->country);
-            });
-        }
-
-        $orders = $query->orderBy('completed_at', 'asc')
-            ->paginate(20);
-
-        return response()->json($orders);
-    }
-
-    /**
-     * Mark order as synced to client portal.
-     */
-    public function markSynced(Request $request, string $id)
-    {
-        $request->validate([
-            'client_portal_id' => 'nullable|string',
-        ]);
-
-        $order = Order::findOrFail($id);
-
-        if ($request->client_portal_id) {
-            $order->client_portal_id = $request->client_portal_id;
-        }
-
-        $order->markSyncedToClientPortal();
-
-        ActivityLog::log('synced_to_client_portal', Order::class, $order->id);
-
-        return response()->json([
-            'message' => 'Order marked as synced to client portal',
-            'data' => $order,
-        ]);
-    }
-
-    /**
-     * Get recently imported orders (unprocessed).
-     */
-    public function recentlyImported(Request $request)
-    {
-        $user = auth()->user();
-
-        $query = Order::with(['project', 'importLog'])
-            ->where('status', 'pending')
-            ->whereNull('assigned_to')
-            ->whereNotNull('import_log_id');
-
-        if ($user->project_id) {
-            $query->where('project_id', $user->project_id);
-        } elseif ($user->country) {
-            $query->whereHas('project', function ($q) use ($user) {
-                $q->where('country', $user->country);
-            });
-        }
-
-        $orders = $query->orderBy('received_at', 'desc')
-            ->paginate(20);
-
-        return response()->json($orders);
-    }
-
-    /**
-     * Bulk assign orders to users.
-     */
-    public function bulkAssign(Request $request)
-    {
-        $request->validate([
-            'assignments' => 'required|array',
-            'assignments.*.order_id' => 'required|exists:orders,id',
-            'assignments.*.user_id' => 'required|exists:users,id',
-        ]);
-
-        $results = [];
-        foreach ($request->assignments as $assignment) {
-            $order = Order::find($assignment['order_id']);
-            $user = User::find($assignment['user_id']);
-
-            if ($order && $user) {
-                $order->update([
-                    'assigned_to' => $user->id,
-                    'team_id' => $user->team_id,
-                ]);
-
-                WorkAssignment::create([
-                    'order_id' => $order->id,
-                    'user_id' => $user->id,
-                    'layer' => $order->current_layer,
-                    'assigned_at' => now(),
-                    'status' => 'assigned',
-                ]);
-
-                $results[] = [
-                    'order_id' => $order->id,
-                    'assigned_to' => $user->id,
-                    'success' => true,
-                ];
+        $user = $request->user();
+        $order = Order::with(['project', 'team', 'assignedUser', 'workItems.assignedUser'])->findOrFail($id);
+
+        // Project isolation check for production users
+        if (in_array($user->role, ['drawer', 'checker', 'qa', 'designer'])) {
+            if ($order->project_id !== $user->project_id) {
+                return response()->json(['message' => 'Access denied.'], 403);
+            }
+            // Workers can only see their own assigned orders
+            if ($order->assigned_to !== $user->id) {
+                return response()->json(['message' => 'Access denied.'], 403);
             }
         }
 
-        ActivityLog::log('bulk_assigned_orders', null, null, null, [
-            'count' => count($results),
-        ]);
+        // Role-based field filtering
+        $data = $this->filterOrderFieldsByRole($order, $user->role);
 
-        return response()->json([
-            'message' => 'Orders assigned successfully',
-            'results' => $results,
-        ]);
+        return response()->json(['order' => $data]);
+    }
+
+    /**
+     * GET /workflow/{projectId}/orders
+     * List orders for a project with filters.
+     */
+    public function projectOrders(Request $request, int $projectId)
+    {
+        $query = Order::where('project_id', $projectId)
+            ->with(['assignedUser:id,name,role', 'team:id,name']);
+
+        if ($request->has('state')) {
+            $query->where('workflow_state', $request->input('state'));
+        }
+        if ($request->has('priority')) {
+            $query->where('priority', $request->input('priority'));
+        }
+        if ($request->has('assigned_to')) {
+            $query->where('assigned_to', $request->input('assigned_to'));
+        }
+        if ($request->has('team_id')) {
+            $query->where('team_id', $request->input('team_id'));
+        }
+
+        $orders = $query->orderBy('received_at', 'desc')->paginate(50);
+
+        return response()->json($orders);
+    }
+
+    /**
+     * GET /workflow/work-items/{orderId}
+     * Get all work items (per-stage history) for an order.
+     */
+    public function workItemHistory(int $orderId)
+    {
+        $items = WorkItem::where('order_id', $orderId)
+            ->with('assignedUser:id,name,role')
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        return response()->json(['work_items' => $items]);
+    }
+
+    // ═══════════════════════════════════════════
+    // HELPERS
+    // ═══════════════════════════════════════════
+
+    /**
+     * Filter order fields based on user role.
+     * Backend enforces role-based data — not just UI hiding.
+     */
+    private function filterOrderFieldsByRole(Order $order, string $role): array
+    {
+        $base = [
+            'id' => $order->id,
+            'order_number' => $order->order_number,
+            'client_reference' => $order->client_reference,
+            'workflow_state' => $order->workflow_state,
+            'priority' => $order->priority,
+            'due_date' => $order->due_date,
+            'received_at' => $order->received_at,
+            'project' => $order->project ? ['id' => $order->project->id, 'name' => $order->project->name, 'code' => $order->project->code] : null,
+            'team' => $order->team ? ['id' => $order->team->id, 'name' => $order->team->name] : null,
+        ];
+
+        // Drawer/Designer: instructions, specs, assets
+        if (in_array($role, ['drawer', 'designer'])) {
+            $base['metadata'] = $order->metadata; // Contains specs/instructions
+            $base['attempt_draw'] = $order->attempt_draw;
+            $base['rejection_reason'] = $order->rejection_reason; // So they know what to fix
+            $base['rejection_type'] = $order->rejection_type;
+            return $base;
+        }
+
+        // Checker: expected vs produced, error points, delta checklist
+        if ($role === 'checker') {
+            $base['metadata'] = $order->metadata;
+            $base['attempt_draw'] = $order->attempt_draw;
+            $base['attempt_check'] = $order->attempt_check;
+            $base['rejection_reason'] = $order->rejection_reason;
+            $base['rejection_type'] = $order->rejection_type;
+            $base['recheck_count'] = $order->recheck_count;
+            $base['work_items'] = $order->workItems->where('stage', 'DRAW')->values();
+            return $base;
+        }
+
+        // QA: final checklist + rejection history
+        if ($role === 'qa') {
+            $base['metadata'] = $order->metadata;
+            $base['attempt_draw'] = $order->attempt_draw;
+            $base['attempt_check'] = $order->attempt_check;
+            $base['attempt_qa'] = $order->attempt_qa;
+            $base['rejection_reason'] = $order->rejection_reason;
+            $base['rejection_type'] = $order->rejection_type;
+            $base['recheck_count'] = $order->recheck_count;
+            $base['work_items'] = $order->workItems; // Full history for QA
+            return $base;
+        }
+
+        // Management: everything
+        $base = $order->toArray();
+        $base['work_items'] = $order->workItems;
+        return $base;
     }
 }
