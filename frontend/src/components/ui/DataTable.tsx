@@ -72,7 +72,7 @@ export default function DataTable<T extends Record<string, any>>({
     return (
       <div className={`bg-white rounded-xl border border-slate-200/60 ${className}`}>
         <div className="flex flex-col items-center justify-center py-16 px-6">
-          {emptyIcon && <div className="mb-4 text-slate-300">{typeof emptyIcon === 'function' ? React.createElement(emptyIcon, { className: 'w-10 h-10' }) : emptyIcon}</div>}
+          {emptyIcon && <div className="mb-4 text-slate-300">{React.isValidElement(emptyIcon) ? emptyIcon : React.createElement(emptyIcon as React.ComponentType<any>, { className: 'w-10 h-10' })}</div>}
           <h3 className="text-sm font-semibold text-slate-700">{emptyTitle}</h3>
           <p className="text-sm text-slate-400 mt-1 text-center max-w-xs">{emptyDescription}</p>
         </div>

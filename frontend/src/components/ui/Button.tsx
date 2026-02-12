@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode, ComponentType } from 'react';
+import React, { type ButtonHTMLAttributes, type ReactNode, type ComponentType } from 'react';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'success';
@@ -36,7 +36,7 @@ export default function Button({ variant = 'primary', size = 'md', loading, icon
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
         </svg>
       ) : icon ? (
-        <span className="shrink-0">{typeof icon === 'function' ? (() => { const Icon = icon as ComponentType<any>; return <Icon className="w-4 h-4" />; })() : icon}</span>
+        <span className="shrink-0">{React.isValidElement(icon) ? icon : React.createElement(icon as ComponentType<any>, { className: 'w-4 h-4' })}</span>
       ) : null}
       {children}
     </button>
