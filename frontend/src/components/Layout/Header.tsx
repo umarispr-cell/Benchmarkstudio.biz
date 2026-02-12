@@ -4,7 +4,18 @@ import { useNavigate } from 'react-router-dom';
 import type { RootState } from '../../store/store';
 import { logout } from '../../store/slices/authSlice';
 import { authService } from '../../services';
-import { Bell, LogOut, Search, Settings, Command, X } from 'lucide-react';
+import {
+  Bell,
+  LogOut,
+  Search,
+  Settings,
+  Command,
+  X,
+  User,
+  Shield,
+  HelpCircle,
+  BellRing,
+} from 'lucide-react';
 
 const Header = () => {
   const dispatch = useDispatch();
@@ -18,17 +29,17 @@ const Header = () => {
   const notifRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifications(false);
-      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) setShowSettings(false);
+      if (notifRef.current && !notifRef.current.contains(e.target as Node))
+        setShowNotifications(false);
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node))
+        setShowSettings(false);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  // Keyboard shortcut for search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -48,15 +59,15 @@ const Header = () => {
   const handleLogout = async () => {
     try {
       await authService.logout();
-    } catch (error) {
-      console.error('Logout error:', error);
+    } catch (e) {
+      console.error(e);
     } finally {
       dispatch(logout());
       navigate('/login');
     }
   };
 
-  const searchPages = [
+  const pages = [
     { name: 'Dashboard', path: '/dashboard', keywords: 'home overview stats' },
     { name: 'Projects', path: '/projects', keywords: 'project manage client' },
     { name: 'Users', path: '/users', keywords: 'user team member staff' },
@@ -64,84 +75,112 @@ const Header = () => {
     { name: 'Work Queue', path: '/work', keywords: 'work queue order task' },
     { name: 'Import Orders', path: '/import', keywords: 'import csv upload' },
     { name: 'Assign Orders', path: '/assign', keywords: 'assign supervisor team' },
-    { name: 'Rejected Orders', path: '/rejected', keywords: 'rejected rework quality' },
+    {
+      name: 'Rejected Orders',
+      path: '/rejected',
+      keywords: 'rejected rework quality',
+    },
   ];
 
-  const filteredPages = searchQuery
-    ? searchPages.filter(p =>
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.keywords.includes(searchQuery.toLowerCase())
+  const filtered = searchQuery
+    ? pages.filter(
+        (p) =>
+          p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          p.keywords.includes(searchQuery.toLowerCase())
       )
-    : searchPages;
-
-  const handleSearchNavigate = (path: string) => {
-    navigate(path);
-    setShowSearch(false);
-    setSearchQuery('');
-  };
+    : pages;
 
   const notifications = [
-    { id: 1, text: 'New order imported successfully', time: '2 min ago', read: false },
-    { id: 2, text: 'Invoice #INV-003 approved', time: '15 min ago', read: false },
-    { id: 3, text: 'Worker assignment completed', time: '1 hour ago', read: true },
-    { id: 4, text: 'Project deadline approaching', time: '3 hours ago', read: true },
+    { id: 1, text: 'New order imported successfully', time: '2m ago', read: false },
+    { id: 2, text: 'Invoice #INV-003 approved', time: '15m ago', read: false },
+    { id: 3, text: 'Worker assignment completed', time: '1h ago', read: true },
+    { id: 4, text: 'Project deadline approaching', time: '3h ago', read: true },
   ];
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
     <>
-      <header className="h-16 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-6 sticky top-0 z-40">
-        {/* Search Bar */}
-        <div className="flex-1 max-w-xl">
-          <div className="relative group cursor-pointer" onClick={() => { setShowSearch(true); setTimeout(() => searchRef.current?.focus(), 100); }}>
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400 transition-colors group-focus-within:text-teal-500" />
+      <header className="h-12 bg-white border-b border-slate-200/80 flex items-center justify-between px-4 sticky top-0 z-40">
+        {/* Search */}
+        <div className="flex-1 max-w-sm">
+          <div
+            className="relative cursor-pointer"
+            onClick={() => {
+              setShowSearch(true);
+              setTimeout(() => searchRef.current?.focus(), 100);
+            }}
+          >
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             <input
               type="text"
-              placeholder="Search anything..."
+              placeholder="Search..."
               readOnly
-              className="w-full pl-11 pr-20 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 transition-all cursor-pointer focus:bg-white focus:border-teal-300 focus:ring-4 focus:ring-teal-100 focus:outline-none"
+              className="w-full pl-9 pr-16 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 cursor-pointer hover:border-slate-300 transition-colors focus:outline-none"
             />
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-1 px-2 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-medium text-slate-400">
-              <Command className="h-3 w-3" />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[9px] font-medium text-slate-400">
+              <Command className="h-2.5 w-2.5" />
               <span>K</span>
             </div>
           </div>
         </div>
 
-        {/* Right Section */}
-        <div className="flex items-center gap-2 ml-6">
+        {/* Right */}
+        <div className="flex items-center gap-1 ml-4">
           {/* Notifications */}
           <div ref={notifRef} className="relative">
-            <button 
-              onClick={() => { setShowNotifications(!showNotifications); setShowSettings(false); }}
-              className="relative p-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all duration-200"
+            <button
+              onClick={() => {
+                setShowNotifications(!showNotifications);
+                setShowSettings(false);
+              }}
+              className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
               aria-label="Notifications"
             >
-              <Bell className="h-5 w-5" />
-              {notifications.some(n => !n.read) && (
-                <span className="absolute top-2 right-2 h-2 w-2 bg-rose-500 rounded-full ring-2 ring-white"></span>
+              <Bell className="h-4 w-4" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 bg-rose-500 rounded-full ring-2 ring-white" />
               )}
             </button>
 
             {showNotifications && (
-              <div className="absolute right-0 top-12 w-80 bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden z-50">
-                <div className="p-4 border-b border-slate-100">
-                  <h3 className="font-semibold text-slate-900">Notifications</h3>
+              <div className="absolute right-0 top-10 w-72 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden z-50">
+                <div className="px-3.5 py-2.5 border-b border-slate-100 flex items-center justify-between">
+                  <h3 className="text-xs font-semibold text-slate-900">
+                    Notifications
+                  </h3>
+                  {unreadCount > 0 && (
+                    <span className="text-[10px] font-medium text-teal-600">
+                      {unreadCount} new
+                    </span>
+                  )}
                 </div>
-                <div className="max-h-80 overflow-y-auto">
+                <div className="max-h-64 overflow-y-auto">
                   {notifications.map((n) => (
-                    <div key={n.id} className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer ${!n.read ? 'bg-teal-50/30' : ''}`}>
-                      <div className="flex items-start gap-3">
-                        {!n.read && <div className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />}
-                        <div className={!n.read ? '' : 'ml-5'}>
-                          <p className="text-sm text-slate-700">{n.text}</p>
-                          <p className="text-xs text-slate-400 mt-1">{n.time}</p>
+                    <div
+                      key={n.id}
+                      className={`px-3.5 py-2.5 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer ${!n.read ? 'bg-teal-50/20' : ''}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {!n.read && (
+                          <div className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1 flex-shrink-0" />
+                        )}
+                        <div className={!n.read ? '' : 'ml-3.5'}>
+                          <p className="text-[11px] text-slate-600 leading-tight">
+                            {n.text}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {n.time}
+                          </p>
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
-                <div className="p-3 text-center border-t border-slate-100">
-                  <button className="text-sm text-teal-600 font-medium hover:text-teal-700">Mark all as read</button>
+                <div className="px-3.5 py-2 border-t border-slate-100 text-center">
+                  <button className="text-[11px] text-teal-600 font-medium hover:text-teal-700">
+                    Mark all as read
+                  </button>
                 </div>
               </div>
             )}
@@ -149,24 +188,32 @@ const Header = () => {
 
           {/* Settings */}
           <div ref={settingsRef} className="relative">
-            <button 
-              onClick={() => { setShowSettings(!showSettings); setShowNotifications(false); }}
-              className="p-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all duration-200"
+            <button
+              onClick={() => {
+                setShowSettings(!showSettings);
+                setShowNotifications(false);
+              }}
+              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
               aria-label="Settings"
             >
-              <Settings className="h-5 w-5" />
+              <Settings className="h-4 w-4" />
             </button>
 
             {showSettings && (
-              <div className="absolute right-0 top-12 w-56 bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden z-50">
-                <div className="p-2">
+              <div className="absolute right-0 top-10 w-48 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden z-50">
+                <div className="p-1.5">
                   {[
-                    { label: 'Profile Settings', action: () => {} },
-                    { label: 'Notification Preferences', action: () => {} },
-                    { label: 'Security', action: () => {} },
-                    { label: 'Help & Support', action: () => {} },
+                    { label: 'Profile', icon: User },
+                    { label: 'Notifications', icon: BellRing },
+                    { label: 'Security', icon: Shield },
+                    { label: 'Help', icon: HelpCircle },
                   ].map((item, i) => (
-                    <button key={i} onClick={() => { item.action(); setShowSettings(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 rounded-xl transition-colors">
+                    <button
+                      key={i}
+                      onClick={() => setShowSettings(false)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                    >
+                      <item.icon className="h-3.5 w-3.5 text-slate-400" />
                       {item.label}
                     </button>
                   ))}
@@ -175,72 +222,96 @@ const Header = () => {
             )}
           </div>
 
-          {/* Divider */}
-          <div className="h-8 w-px bg-slate-200 mx-2" />
+          <div className="h-6 w-px bg-slate-200 mx-1" />
 
-          {/* User Profile */}
-          <div className="flex items-center gap-3 pl-2">
+          {/* User */}
+          <div className="flex items-center gap-2">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-semibold text-slate-900">{user?.name}</p>
-              <p className="text-xs text-slate-500">{user?.country || 'Global'}</p>
+              <p className="text-[11px] font-semibold text-slate-800 leading-tight">
+                {user?.name}
+              </p>
+              <p className="text-[10px] text-slate-400 leading-tight capitalize">
+                {user?.role?.replace('_', ' ')}
+              </p>
             </div>
             <div className="relative">
-              <div className="avatar avatar-md bg-gradient-to-br from-teal-500 to-cyan-600 ring-2 ring-white shadow-lg">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white text-xs font-bold">
                 {user?.name?.charAt(0).toUpperCase()}
               </div>
-              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white" />
+              <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full border-[1.5px] border-white" />
             </div>
           </div>
 
-          {/* Logout Button */}
           <button
             onClick={handleLogout}
-            className="ml-2 p-2.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all duration-200"
+            className="ml-1 p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
             aria-label="Logout"
           >
-            <LogOut className="h-5 w-5" />
+            <LogOut className="h-4 w-4" />
           </button>
         </div>
       </header>
 
-      {/* Command Palette / Search Modal */}
+      {/* Command Palette */}
       {showSearch && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => { setShowSearch(false); setSearchQuery(''); }} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in">
-            <div className="flex items-center gap-3 px-4 border-b border-slate-100">
-              <Search className="h-5 w-5 text-slate-400" />
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => {
+              setShowSearch(false);
+              setSearchQuery('');
+            }}
+          />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
+            <div className="flex items-center gap-2.5 px-3.5 border-b border-slate-100">
+              <Search className="h-4 w-4 text-slate-400" />
               <input
                 ref={searchRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && filteredPages.length > 0) {
-                    handleSearchNavigate(filteredPages[0].path);
+                  if (e.key === 'Enter' && filtered.length > 0) {
+                    navigate(filtered[0].path);
+                    setShowSearch(false);
+                    setSearchQuery('');
                   }
                 }}
-                placeholder="Search pages, features..."
-                className="flex-1 py-4 text-sm border-0 focus:ring-0 focus:outline-none bg-transparent"
+                placeholder="Search pages..."
+                className="flex-1 py-3 text-xs border-0 focus:ring-0 focus:outline-none bg-transparent"
                 autoFocus
               />
-              <button onClick={() => { setShowSearch(false); setSearchQuery(''); }} className="p-1.5 hover:bg-slate-100 rounded-lg">
-                <X className="h-4 w-4 text-slate-400" />
+              <button
+                onClick={() => {
+                  setShowSearch(false);
+                  setSearchQuery('');
+                }}
+                className="p-1 hover:bg-slate-100 rounded"
+              >
+                <X className="h-3.5 w-3.5 text-slate-400" />
               </button>
             </div>
-            <div className="max-h-64 overflow-y-auto p-2">
-              {filteredPages.map((page) => (
+            <div className="max-h-56 overflow-y-auto p-1.5">
+              {filtered.map((p) => (
                 <button
-                  key={page.path}
-                  onClick={() => handleSearchNavigate(page.path)}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-700 rounded-xl transition-colors"
+                  key={p.path}
+                  onClick={() => {
+                    navigate(p.path);
+                    setShowSearch(false);
+                    setSearchQuery('');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-slate-600 hover:bg-teal-50 hover:text-teal-700 rounded-lg transition-colors"
                 >
-                  <span className="font-medium">{page.name}</span>
-                  <span className="text-xs text-slate-400 ml-auto">{page.path}</span>
+                  <span className="font-medium">{p.name}</span>
+                  <span className="text-[10px] text-slate-400 ml-auto">
+                    {p.path}
+                  </span>
                 </button>
               ))}
-              {filteredPages.length === 0 && (
-                <div className="text-center py-8 text-slate-500 text-sm">No results found</div>
+              {filtered.length === 0 && (
+                <div className="text-center py-6 text-xs text-slate-400">
+                  No results
+                </div>
               )}
             </div>
           </div>
