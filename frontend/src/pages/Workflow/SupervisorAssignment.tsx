@@ -112,7 +112,7 @@ export default function SupervisorAssignment() {
           { key: 'assigned', label: 'Assigned To', render: (o) => (
             o.assignedUser ? (
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-slate-900 flex items-center justify-center text-white text-xs font-bold">{o.assignedUser.name.charAt(0)}</div>
+                <div className="w-6 h-6 rounded bg-[#2AA7A0] flex items-center justify-center text-white text-xs font-bold">{o.assignedUser.name.charAt(0)}</div>
                 <span className="text-sm text-slate-700">{o.assignedUser.name}</span>
               </div>
             ) : <span className="text-xs text-amber-500 font-medium">Unassigned</span>

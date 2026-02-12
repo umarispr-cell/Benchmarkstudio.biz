@@ -37,8 +37,8 @@ export default function Login() {
   return (
     <div className="min-h-screen flex">
       {/* Left panel - brand */}
-      <div className="hidden lg:flex lg:w-1/2 bg-slate-900 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" />
+      <div className="hidden lg:flex lg:w-1/2 bg-[#1e3a3a] relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#1e3a3a] via-[#1a4040] to-[#0f2626]" />
         <div className="absolute inset-0 opacity-5">
           <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
             {Array.from({ length: 20 }).map((_, i) => (
@@ -51,12 +51,10 @@ export default function Login() {
         </div>
         <div className="relative z-10 flex flex-col justify-center px-16">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center mb-8">
-              <span className="text-slate-900 font-black text-xl">B</span>
-            </div>
+            <img src="/logo-icon.svg" alt="Benchmark" className="w-12 h-12 mb-8" />
             <h1 className="text-4xl font-bold text-white leading-tight">
               Benchmark<br />
-              <span className="text-slate-400">Management System</span>
+              <span className="text-[#2AA7A0]">Management System</span>
             </h1>
             <p className="text-slate-400 mt-4 text-lg max-w-md leading-relaxed">
               Enterprise workflow management for high-volume project operations across multiple regions.
@@ -73,7 +71,7 @@ export default function Login() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 + i * 0.1 }}
-                  className="bg-white/5 border border-white/10 rounded-lg p-3"
+                  className="bg-white/5 border border-[#2AA7A0]/20 rounded-lg p-3"
                 >
                   <div className="text-xl font-bold text-white">{s.value}</div>
                   <div className="text-xs text-slate-400">{s.label}</div>
@@ -94,10 +92,7 @@ export default function Login() {
         >
           {/* Mobile logo */}
           <div className="lg:hidden mb-8">
-            <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center mb-4">
-              <span className="text-white font-black text-lg">B</span>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900">Benchmark</h1>
+            <img src="/logo.svg" alt="Benchmark" className="h-10 mb-4" />
           </div>
 
           <h2 className="text-2xl font-bold text-slate-900">Sign in</h2>
@@ -121,7 +116,7 @@ export default function Login() {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2AA7A0] focus:border-transparent transition-all"
                 placeholder="you@benchmark.com"
                 autoComplete="email"
                 autoFocus
@@ -134,7 +129,7 @@ export default function Login() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all pr-11"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2AA7A0] focus:border-transparent transition-all pr-11"
                   placeholder="Enter password"
                   autoComplete="current-password"
                 />
@@ -150,7 +145,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98]"
+              className="w-full py-3 bg-[#2AA7A0] text-white text-sm font-medium rounded-xl hover:bg-[#228a84] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98]"
             >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

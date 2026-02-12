@@ -151,7 +151,7 @@ export default function DataTable<T extends Record<string, any>>({
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${p === page ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                  className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${p === page ? 'bg-[#2AA7A0] text-white' : 'text-slate-600 hover:bg-slate-100'}`}
                 >
                   {p + 1}
                 </button>

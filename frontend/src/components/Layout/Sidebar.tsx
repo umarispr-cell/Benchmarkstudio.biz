@@ -35,9 +35,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div className={`h-16 flex items-center border-b border-slate-100 ${collapsed ? 'justify-center px-2' : 'px-5'}`}>
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-sm">B</span>
-          </div>
+          <img src="/logo-icon.svg" alt="Benchmark" className="w-8 h-8 shrink-0" />
           <AnimatePresence>
             {!collapsed && (
               <motion.span
@@ -68,7 +66,7 @@ export default function Sidebar() {
               key={item.name}
               to={item.href}
               title={collapsed ? item.name : undefined}
-              className={`group flex items-center gap-3 rounded-lg transition-all duration-150 relative ${collapsed ? 'justify-center p-2.5' : 'px-3 py-2.5'} ${active ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
+              className={`group flex items-center gap-3 rounded-lg transition-all duration-150 relative ${collapsed ? 'justify-center p-2.5' : 'px-3 py-2.5'} ${active ? 'bg-[#2AA7A0] text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
             >
               <Icon className={`h-[18px] w-[18px] shrink-0 ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`} />
               <AnimatePresence>
@@ -92,7 +90,7 @@ export default function Sidebar() {
       <div className={`border-t border-slate-100 ${collapsed ? 'p-2' : 'p-3'}`}>
         {!collapsed && (
           <div className="flex items-center gap-3 px-2 py-2 mb-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-white text-xs font-bold shrink-0">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2AA7A0] to-[#228a84] flex items-center justify-center text-white text-xs font-bold shrink-0">
               {user?.name?.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">

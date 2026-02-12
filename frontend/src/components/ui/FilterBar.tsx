@@ -21,7 +21,7 @@ export default function FilterBar({ searchValue, onSearchChange, searchPlacehold
           onChange={e => onSearchChange(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && onSearchSubmit?.()}
           placeholder={searchPlaceholder}
-          className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 placeholder:text-slate-400 transition-all"
+          className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2AA7A0]/20 focus:border-[#2AA7A0]/40 placeholder:text-slate-400 transition-all"
         />
       </div>
       {(filters || children) && (
@@ -43,7 +43,7 @@ export function FilterSelect({ value, onChange, options, className = '' }: Filte
     <select
       value={value}
       onChange={e => onChange(e.target.value)}
-      className={`text-sm bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 text-slate-700 ${className}`}
+      className={`text-sm bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#2AA7A0]/20 focus:border-[#2AA7A0]/40 text-slate-700 ${className}`}
     >
       {options.map(o => (
         <option key={o.value} value={o.value}>{o.label}</option>

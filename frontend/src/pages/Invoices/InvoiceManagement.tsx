@@ -97,7 +97,7 @@ export default function InvoiceManagement() {
               <div key={status} className="flex items-center">
                 <button
                   onClick={() => setSelectedStatus(active ? 'all' : status)}
-                  className={`flex flex-col items-center px-4 py-2 rounded-lg transition-all ${active ? 'bg-slate-900 text-white' : 'hover:bg-slate-50'}`}
+                  className={`flex flex-col items-center px-4 py-2 rounded-lg transition-all ${active ? 'bg-[#2AA7A0] text-white' : 'hover:bg-slate-50'}`}
                 >
                   <span className={`text-[11px] uppercase font-medium tracking-wide ${active ? 'text-slate-300' : 'text-slate-400'}`}>{status}</span>
                   <span className={`text-xl font-bold mt-0.5 ${active ? 'text-white' : 'text-slate-900'}`}>{count}</span>
@@ -212,7 +212,7 @@ export default function InvoiceManagement() {
                 const isCurrent = s === showDetail.status;
                 return (
                   <div key={s} className="flex-1 flex flex-col items-center">
-                    <div className={`w-full h-1.5 rounded-full ${isDone ? 'bg-slate-900' : 'bg-slate-200'}`} />
+                    <div className={`w-full h-1.5 rounded-full ${isDone ? 'bg-[#2AA7A0]' : 'bg-slate-200'}`} />
                     <span className={`text-[11px] mt-1 ${isCurrent ? 'font-bold text-slate-900' : 'text-slate-400'}`}>{s}</span>
                   </div>
                 );

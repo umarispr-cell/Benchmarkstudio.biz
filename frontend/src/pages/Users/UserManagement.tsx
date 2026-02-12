@@ -124,7 +124,7 @@ export default function UserManagement() {
           columns={[
             { key: 'name', label: 'User', sortable: true, render: (u) => (
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-slate-900 flex items-center justify-center text-white font-bold text-sm">{u.name.charAt(0)}</div>
+                <div className="w-9 h-9 rounded-lg bg-[#2AA7A0] flex items-center justify-center text-white font-bold text-sm">{u.name.charAt(0)}</div>
                 <div>
                   <div className="font-semibold text-slate-900 flex items-center gap-2">
                     {u.name}

@@ -80,12 +80,12 @@ export default function WorkQueue() {
       <div className="bg-white rounded-xl border border-slate-200/60 p-3 mb-6 overflow-x-auto">
         <div className="flex items-center gap-2 min-w-max">
           <button onClick={() => setSelectedState('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${selectedState === 'all' ? 'bg-slate-900 text-white' : 'hover:bg-slate-100 text-slate-600'}`}>
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${selectedState === 'all' ? 'bg-[#2AA7A0] text-white' : 'hover:bg-slate-100 text-slate-600'}`}>
             All ({orders.length})
           </button>
           {Object.entries(stateCounts).sort(([a], [b]) => a.localeCompare(b)).map(([state, count]) => (
             <button key={state} onClick={() => setSelectedState(selectedState === state ? 'all' : state)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${selectedState === state ? 'bg-slate-900 text-white' : 'hover:bg-slate-100 text-slate-600'}`}>
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${selectedState === state ? 'bg-[#2AA7A0] text-white' : 'hover:bg-slate-100 text-slate-600'}`}>
               {state.replace(/_/g, ' ')} ({count})
             </button>
           ))}
