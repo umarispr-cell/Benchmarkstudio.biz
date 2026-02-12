@@ -4,7 +4,7 @@ import type {
   Project, ProjectInput, Team,
   Order, WorkItem, MonthLock, Invoice, InvoiceInput,
   MasterDashboard, ProjectDashboard, WorkerDashboardData, OpsDashboardData, QueueHealth,
-  PaginatedResponse,
+  PaginatedResponse, Notification,
   OrderImportSource, OrderImportLog, ChecklistTemplate, OrderChecklist,
   WorkflowState, InvoiceStatus,
 } from '../types';
@@ -211,4 +211,20 @@ export const checklistService = {
     api.put(`/orders/${orderId}/checklist`, { items }),
   checklistStatus: (orderId: number) =>
     api.get(`/orders/${orderId}/checklist-status`),
+};
+
+// ═══════════════════════════════════════════
+// NOTIFICATION SERVICE
+// ═══════════════════════════════════════════
+export const notificationService = {
+  list: (page = 1, unreadOnly = false) =>
+    api.get<PaginatedResponse<Notification>>('/notifications', { params: { page, unread_only: unreadOnly ? 1 : 0 } }),
+  unreadCount: () =>
+    api.get<{ unread_count: number }>('/notifications/unread-count'),
+  markRead: (id: number) =>
+    api.post(`/notifications/${id}/read`),
+  markAllRead: () =>
+    api.post('/notifications/read-all'),
+  destroy: (id: number) =>
+    api.delete(`/notifications/${id}`),
 };

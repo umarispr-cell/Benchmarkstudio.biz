@@ -7,6 +7,7 @@ use App\Models\MonthLock;
 use App\Models\Order;
 use App\Models\WorkItem;
 use App\Services\AuditService;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 
 class MonthLockController extends Controller
@@ -71,6 +72,8 @@ class MonthLockController extends Controller
         );
 
         AuditService::logMonthLock($lock->id, $projectId, 'LOCK_MONTH');
+
+        NotificationService::monthLocked($projectId, $month, $year, $user);
 
         return response()->json([
             'lock' => $lock,

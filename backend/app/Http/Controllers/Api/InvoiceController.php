@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\MonthLock;
 use App\Models\Project;
 use App\Services\AuditService;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 
 class InvoiceController extends Controller
@@ -178,6 +179,8 @@ class InvoiceController extends Controller
         $invoice->update($updates);
 
         AuditService::logInvoiceAction($invoice->id, $invoice->project_id, 'INVOICE_' . strtoupper($toStatus), $before, $updates);
+
+        NotificationService::invoiceTransition($invoice->id, $before['status'], $toStatus, $user);
 
         return response()->json([
             'invoice' => $invoice->fresh(),

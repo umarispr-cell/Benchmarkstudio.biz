@@ -7,6 +7,7 @@ use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Models\ActivityLog;
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 
 class UserController extends Controller
@@ -170,6 +171,8 @@ class UserController extends Controller
 
         // Reassign any active work
         \App\Services\AssignmentEngine::reassignFromUser($user, auth()->id());
+
+        NotificationService::userDeactivated($user, auth()->user());
 
         ActivityLog::log('deactivated_user', User::class, $user->id, $oldValues, ['is_active' => false]);
 

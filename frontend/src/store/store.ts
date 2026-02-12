@@ -4,6 +4,7 @@ import projectReducer from './slices/projectSlice';
 import userReducer from './slices/userSlice';
 import dashboardReducer from './slices/dashboardSlice';
 import workflowReducer from './slices/workflowSlice';
+import notificationReducer from './slices/notificationSlice';
 
 export const store = configureStore({
   reducer: {
@@ -12,6 +13,7 @@ export const store = configureStore({
     user: userReducer,
     dashboard: dashboardReducer,
     workflow: workflowReducer,
+    notifications: notificationReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

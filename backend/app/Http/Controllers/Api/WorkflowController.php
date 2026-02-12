@@ -9,6 +9,7 @@ use App\Models\Project;
 use App\Services\StateMachine;
 use App\Services\AssignmentEngine;
 use App\Services\AuditService;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -48,6 +49,8 @@ class WorkflowController extends Controller
                 'queue_empty' => true,
             ]);
         }
+
+        NotificationService::orderAssigned($order, $user);
 
         return response()->json([
             'order' => $order->load(['project', 'team', 'workItems']),
@@ -98,6 +101,8 @@ class WorkflowController extends Controller
         $comments = $request->input('comments');
         $order = AssignmentEngine::submitWork($order, $user, $comments);
 
+        NotificationService::workSubmitted($order, $user);
+
         return response()->json([
             'order' => $order,
             'message' => 'Work submitted successfully.',
@@ -139,6 +144,8 @@ class WorkflowController extends Controller
             $request->input('route_to')
         );
 
+        NotificationService::orderRejected($order, $user, $request->input('reason'));
+
         return response()->json([
             'order' => $order,
             'message' => 'Order rejected and returned to queue.',
@@ -175,6 +182,8 @@ class WorkflowController extends Controller
             'hold_reason' => $request->input('hold_reason'),
         ]);
 
+        NotificationService::orderOnHold($order, $user, $request->input('hold_reason'));
+
         return response()->json([
             'order' => $order->fresh(),
             'message' => 'Order placed on hold.',
@@ -202,6 +211,8 @@ class WorkflowController extends Controller
         $queueState = $order->workflow_type === 'PH_2_LAYER' ? 'QUEUED_DESIGN' : 'QUEUED_DRAW';
 
         StateMachine::transition($order, $queueState, $user->id, ['resumed_from_hold' => true]);
+
+        NotificationService::orderResumed($order, $user);
 
         return response()->json([
             'order' => $order->fresh(),
@@ -426,6 +437,8 @@ class WorkflowController extends Controller
 
             return $order;
         });
+
+        NotificationService::orderReceived($order, auth()->user());
 
         return response()->json([
             'order' => $order->fresh(),

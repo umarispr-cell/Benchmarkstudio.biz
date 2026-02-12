@@ -463,3 +463,32 @@ export interface OrderChecklist {
   notes: string;
   completed_at: string | null;
 }
+
+// ═══════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════
+export type NotificationType =
+  | 'order_assigned'
+  | 'work_submitted'
+  | 'order_rejected'
+  | 'order_received'
+  | 'order_on_hold'
+  | 'order_resumed'
+  | 'order_delivered'
+  | 'user_deactivated'
+  | 'force_logout'
+  | 'invoice_transition'
+  | 'month_locked';
+
+export interface Notification {
+  id: number;
+  user_id: number;
+  type: NotificationType;
+  title: string;
+  message: string;
+  data: Record<string, unknown> | null;
+  action_url: string | null;
+  read_at: string | null;
+  created_at: string;
+  updated_at: string;
+}

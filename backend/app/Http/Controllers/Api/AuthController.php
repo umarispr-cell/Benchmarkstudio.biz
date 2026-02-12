@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\UserSession;
 use App\Services\AuditService;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -161,6 +162,8 @@ class AuthController extends Controller
         AuditService::log($actor->id, 'FORCE_LOGOUT', 'User', $target->id, null, null, [
             'reassigned_orders' => $reassigned,
         ]);
+
+        NotificationService::forceLogout($target, $actor);
 
         return response()->json([
             'message' => "User forcibly logged out. {$reassigned} orders reassigned to queue.",

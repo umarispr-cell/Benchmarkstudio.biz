@@ -3,9 +3,12 @@ import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import { logout } from '../../store/slices/authSlice';
+import { resetNotifications } from '../../store/slices/notificationSlice';
 import { authService } from '../../services';
-import { LogOut, Search, Command, X, Bell } from 'lucide-react';
+import { LogOut, Search, Command, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import NotificationBell from '../Notifications/NotificationBell';
+import { useNotificationPolling } from '../../hooks/useNotificationPolling';
 
 const PAGES = [
   { name: 'Dashboard', path: '/dashboard', keywords: 'home overview stats' },
@@ -26,6 +29,9 @@ export default function Header() {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Start polling for notifications
+  useNotificationPolling();
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -41,7 +47,7 @@ export default function Header() {
 
   const handleLogout = async () => {
     try { await authService.logout(); } catch (_) {}
-    finally { dispatch(logout()); navigate('/login'); }
+    finally { dispatch(resetNotifications()); dispatch(logout()); navigate('/login'); }
   };
 
   const filtered = query
@@ -65,10 +71,7 @@ export default function Header() {
 
         {/* Right */}
         <div className="flex items-center gap-2">
-          <button className="relative p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
-            <Bell className="h-[18px] w-[18px]" />
-            <span className="absolute top-2 right-2 w-2 h-2 bg-blue-500 rounded-full ring-2 ring-white" />
-          </button>
+          <NotificationBell />
 
           <div className="w-px h-6 bg-slate-200 mx-1" />
 

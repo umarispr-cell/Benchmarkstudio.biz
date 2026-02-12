@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\MonthLockController;
 use App\Http\Controllers\Api\OrderImportController;
 use App\Http\Controllers\Api\ChecklistController;
+use App\Http\Controllers\Api\NotificationController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -30,6 +31,13 @@ Route::middleware(['auth:sanctum', 'single.session'])->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/profile', [AuthController::class, 'profile']);
     Route::get('/auth/session-check', [AuthController::class, 'sessionCheck']);
+
+    // ── Notifications (all authenticated users) ──
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead']);
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
 
     // ═══════════════════════════════════════════
     // PRODUCTION WORKER ROUTES
