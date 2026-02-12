@@ -35,6 +35,11 @@ class WorkflowController extends Controller
             return response()->json(['message' => 'You are not assigned to a project.'], 422);
         }
 
+        // Defense-in-depth: reject if requested project doesn't match user's project
+        if ($request->has('project_id') && (int)$request->input('project_id') !== $user->project_id) {
+            return response()->json(['message' => 'You can only work on your assigned project.'], 403);
+        }
+
         $order = AssignmentEngine::startNext($user);
 
         if (!$order) {
@@ -407,6 +412,7 @@ class WorkflowController extends Controller
                 'client_reference' => $request->input('client_reference'),
                 'workflow_state' => 'RECEIVED',
                 'workflow_type' => $project->workflow_type,
+                'current_layer' => $project->workflow_type === 'PH_2_LAYER' ? 'designer' : 'drawer',
                 'status' => 'pending',
                 'priority' => $request->input('priority', 'normal'),
                 'due_date' => $request->input('due_date'),
@@ -461,6 +467,13 @@ class WorkflowController extends Controller
     {
         $query = Order::where('project_id', $projectId)
             ->with(['assignedUser:id,name,role', 'team:id,name']);
+
+        $user = $request->user();
+        if (!in_array($user->role, ['ceo', 'director'])) {
+            if ($user->project_id && $user->project_id != $projectId) {
+                return response()->json(['message' => 'Access denied to this project.'], 403);
+            }
+        }
 
         if ($request->has('state')) {
             $query->where('workflow_state', $request->input('state'));

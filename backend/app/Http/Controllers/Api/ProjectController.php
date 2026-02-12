@@ -18,6 +18,15 @@ class ProjectController extends Controller
     {
         $query = Project::with(['teams', 'users']);
 
+        $user = $request->user();
+        if ($user->role === 'operations_manager') {
+            if ($user->project_id) {
+                $query->where('id', $user->project_id);
+            } else {
+                $query->where('country', $user->country);
+            }
+        }
+
         // Filter by country
         if ($request->has('country')) {
             $query->where('country', $request->country);

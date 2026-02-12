@@ -157,4 +157,43 @@ class UserController extends Controller
 
         return response()->json($users);
     }
+
+    /**
+     * Deactivate a user and reassign their work.
+     */
+    public function deactivate(string $id)
+    {
+        $user = User::findOrFail($id);
+        $oldValues = ['is_active' => $user->is_active];
+
+        $user->update(['is_active' => false, 'is_absent' => true]);
+
+        // Reassign any active work
+        \App\Services\AssignmentEngine::reassignFromUser($user, auth()->id());
+
+        ActivityLog::log('deactivated_user', User::class, $user->id, $oldValues, ['is_active' => false]);
+
+        return response()->json([
+            'message' => 'User deactivated and work reassigned.',
+            'data' => $user->fresh(),
+        ]);
+    }
+
+    /**
+     * Reassign all work from a user.
+     */
+    public function reassignWork(Request $request)
+    {
+        $request->validate(['user_id' => 'required|exists:users,id']);
+
+        $user = User::findOrFail($request->user_id);
+        \App\Services\AssignmentEngine::reassignFromUser($user, auth()->id());
+
+        ActivityLog::log('reassigned_work', User::class, $user->id, null, ['reassigned_by' => auth()->id()]);
+
+        return response()->json([
+            'message' => 'All work reassigned from user.',
+            'data' => $user->fresh(),
+        ]);
+    }
 }

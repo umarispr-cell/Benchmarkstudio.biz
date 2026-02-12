@@ -21,7 +21,9 @@ class ProjectSeeder extends Seeder
                 'department' => 'floor_plan',
                 'client_name' => 'London Estate Agents Ltd',
                 'status' => 'active',
+                'workflow_type' => 'FP_3_LAYER',
                 'workflow_layers' => ['drawer', 'checker', 'qa'],
+                'wip_cap' => 3,
                 'metadata' => ['priority' => 'high'],
             ],
             [
@@ -31,7 +33,9 @@ class ProjectSeeder extends Seeder
                 'department' => 'photos_enhancement',
                 'client_name' => 'Manchester Properties',
                 'status' => 'active',
+                'workflow_type' => 'PH_2_LAYER',
                 'workflow_layers' => ['designer', 'qa'],
+                'wip_cap' => 3,
                 'metadata' => ['priority' => 'normal'],
             ],
             // Australia Projects
@@ -42,7 +46,9 @@ class ProjectSeeder extends Seeder
                 'department' => 'floor_plan',
                 'client_name' => 'Sydney Property Group',
                 'status' => 'active',
+                'workflow_type' => 'FP_3_LAYER',
                 'workflow_layers' => ['drawer', 'checker', 'qa'],
+                'wip_cap' => 3,
                 'metadata' => ['priority' => 'high'],
             ],
             [
@@ -52,7 +58,9 @@ class ProjectSeeder extends Seeder
                 'department' => 'photos_enhancement',
                 'client_name' => 'Melbourne Realty',
                 'status' => 'active',
+                'workflow_type' => 'PH_2_LAYER',
                 'workflow_layers' => ['designer', 'qa'],
+                'wip_cap' => 3,
                 'metadata' => ['priority' => 'normal'],
             ],
             // Canada Projects
@@ -63,7 +71,9 @@ class ProjectSeeder extends Seeder
                 'department' => 'floor_plan',
                 'client_name' => 'Toronto Property Solutions',
                 'status' => 'active',
+                'workflow_type' => 'FP_3_LAYER',
                 'workflow_layers' => ['drawer', 'checker', 'qa'],
+                'wip_cap' => 3,
                 'metadata' => ['priority' => 'normal'],
             ],
             // USA Projects
@@ -74,7 +84,9 @@ class ProjectSeeder extends Seeder
                 'department' => 'floor_plan',
                 'client_name' => 'NYC Real Estate Co',
                 'status' => 'active',
+                'workflow_type' => 'FP_3_LAYER',
                 'workflow_layers' => ['drawer', 'checker', 'qa'],
+                'wip_cap' => 3,
                 'metadata' => ['priority' => 'urgent'],
             ],
             [
@@ -84,7 +96,9 @@ class ProjectSeeder extends Seeder
                 'department' => 'photos_enhancement',
                 'client_name' => 'LA Property Media',
                 'status' => 'active',
+                'workflow_type' => 'PH_2_LAYER',
                 'workflow_layers' => ['designer', 'qa'],
+                'wip_cap' => 3,
                 'metadata' => ['priority' => 'high'],
             ],
         ];

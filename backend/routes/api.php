@@ -24,7 +24,7 @@ Route::post('/auth/login', [AuthController::class, 'login'])
     ->middleware('throttle:login');
 
 // ── Authenticated routes ──
-Route::middleware(['auth:sanctum'])->group(function () {
+Route::middleware(['auth:sanctum', 'single.session'])->group(function () {
 
     // ── Auth ──
     Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -122,6 +122,24 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/projects/{projectId}/checklists', [ChecklistController::class, 'createTemplate']);
         Route::put('/checklists/{templateId}', [ChecklistController::class, 'updateTemplate']);
         Route::delete('/checklists/{templateId}', [ChecklistController::class, 'deleteTemplate']);
+
+        // Audit logs
+        Route::get('/audit-logs', function (\Illuminate\Http\Request $request) {
+            $query = \App\Models\ActivityLog::with('user:id,name,email,role')
+                ->orderBy('created_at', 'desc');
+
+            if ($request->has('action')) {
+                $query->where('action', $request->action);
+            }
+            if ($request->has('user_id')) {
+                $query->where('user_id', $request->user_id);
+            }
+            if ($request->has('entity_type')) {
+                $query->where('model_type', $request->entity_type);
+            }
+
+            return response()->json($query->paginate(50));
+        });
     });
 
     // ═══════════════════════════════════════════

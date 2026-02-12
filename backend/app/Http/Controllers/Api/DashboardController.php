@@ -202,6 +202,10 @@ class DashboardController extends Controller
     {
         $user = $request->user();
 
+        if (!in_array($user->role, ['ceo', 'director', 'operations_manager'])) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         // Get projects the ops manager is responsible for
         $projects = $user->project_id
             ? Project::where('id', $user->project_id)->get()

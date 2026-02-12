@@ -219,12 +219,21 @@ class AssignmentEngine
                     ->where('status', 'in_progress')
                     ->update(['status' => 'abandoned', 'completed_at' => now()]);
 
-                // Revert order to queued
-                $order->update(['assigned_to' => null]);
-                StateMachine::transition($order, $queueState, $actorId, [
-                    'reason' => 'user_reassignment',
-                    'original_user' => $user->id,
+                // Directly update state (admin override — bypasses state machine validation)
+                $oldState = $order->workflow_state;
+                $order->update([
+                    'workflow_state' => $queueState,
+                    'assigned_to' => null,
                 ]);
+
+                // Create audit log manually
+                \App\Models\ActivityLog::log(
+                    'admin_reassign',
+                    \App\Models\Order::class,
+                    $order->id,
+                    ['workflow_state' => $oldState, 'assigned_to' => $user->id],
+                    ['workflow_state' => $queueState, 'assigned_to' => null]
+                );
             });
             $count++;
         }
