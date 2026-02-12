@@ -1,190 +1,173 @@
-import { useState, type FormEvent } from 'react';
-import { useDispatch } from 'react-redux';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { setCredentials, setLoading } from '../../store/slices/authSlice';
+import { useDispatch } from 'react-redux';
+import { setCredentials, setLoading as setAuthLoading } from '../../store/slices/authSlice';
 import { authService } from '../../services';
-import { Lock, Mail, ArrowRight, Shield } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { LogIn, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
-const Login = () => {
+export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoadingState] = useState(false);
-  
-  const dispatch = useDispatch();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setLoadingState(true);
-    dispatch(setLoading(true));
-
+    if (!email || !password) { setError('Email and password are required.'); return; }
     try {
-      const response = await authService.login({ email, password });
-      dispatch(setCredentials({
-        user: response.data.user,
-        token: response.data.token,
-      }));
+      setLoading(true); setError('');
+      dispatch(setAuthLoading(true));
+      const res = await authService.login({ email, password });
+      const { user, token } = res.data;
+      dispatch(setCredentials({ user, token }));
+      localStorage.setItem('token', token);
       navigate('/dashboard');
     } catch (err: any) {
-      const message = err.response?.data?.message || 'Login failed. Please try again.';
-      setError(message);
+      setError(err.response?.data?.message || 'Invalid credentials.');
     } finally {
-      setLoadingState(false);
-      dispatch(setLoading(false));
+      setLoading(false);
+      dispatch(setAuthLoading(false));
     }
   };
 
   return (
     <div className="min-h-screen flex">
-      {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-slate-900 via-teal-900 to-slate-900 relative overflow-hidden">
-        {/* Background Pattern */}
-        <div className="absolute inset-0 opacity-30">
-          <div className="absolute top-0 left-0 w-96 h-96 bg-teal-500 rounded-full filter blur-3xl -translate-x-1/2 -translate-y-1/2" />
-          <div className="absolute bottom-0 right-0 w-96 h-96 bg-orange-500 rounded-full filter blur-3xl translate-x-1/2 translate-y-1/2" />
-          <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-cyan-500 rounded-full filter blur-3xl -translate-x-1/2 -translate-y-1/2" />
+      {/* Left panel - brand */}
+      <div className="hidden lg:flex lg:w-1/2 bg-slate-900 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" />
+        <div className="absolute inset-0 opacity-5">
+          <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+            {Array.from({ length: 20 }).map((_, i) => (
+              <line key={i} x1={i * 5} y1="0" x2={i * 5} y2="100" stroke="white" strokeWidth="0.1" />
+            ))}
+            {Array.from({ length: 20 }).map((_, i) => (
+              <line key={`h${i}`} x1="0" y1={i * 5} x2="100" y2={i * 5} stroke="white" strokeWidth="0.1" />
+            ))}
+          </svg>
         </div>
-        
-        {/* Grid Pattern */}
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px]" />
-        
-        {/* Content */}
-        <div className="relative z-10 flex flex-col justify-between p-12 w-full">
-          <div className="flex items-center gap-4">
-            <img src="/logo.svg" alt="Benchmark" className="h-14 w-auto" />
-          </div>
-          
-          <div className="space-y-6">
-            <h1 className="text-5xl font-bold text-white leading-tight">
-              Manage your<br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 via-cyan-400 to-orange-400">
-                workflow with precision
-              </span>
-            </h1>
-            <p className="text-lg text-slate-400 max-w-md">
-              Enterprise-grade project management system designed for high-volume workflows across multiple countries.
-            </p>
-            
-            <div className="flex items-center gap-8 pt-4">
-              <div>
-                <div className="text-3xl font-bold text-white">99.9%</div>
-                <div className="text-sm text-slate-400">Uptime</div>
-              </div>
-              <div className="h-12 w-px bg-slate-700" />
-              <div>
-                <div className="text-3xl font-bold text-white">4</div>
-                <div className="text-sm text-slate-400">Countries</div>
-              </div>
-              <div className="h-12 w-px bg-slate-700" />
-              <div>
-                <div className="text-3xl font-bold text-white">24/7</div>
-                <div className="text-sm text-slate-400">Support</div>
-              </div>
+        <div className="relative z-10 flex flex-col justify-center px-16">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center mb-8">
+              <span className="text-slate-900 font-black text-xl">B</span>
             </div>
-          </div>
-          
-          <div className="flex items-center gap-3 text-slate-400 text-sm">
-            <Shield className="h-4 w-4" />
-            <span>Enterprise security with role-based access control</span>
-          </div>
+            <h1 className="text-4xl font-bold text-white leading-tight">
+              Benchmark<br />
+              <span className="text-slate-400">Management System</span>
+            </h1>
+            <p className="text-slate-400 mt-4 text-lg max-w-md leading-relaxed">
+              Enterprise workflow management for high-volume project operations across multiple regions.
+            </p>
+            <div className="mt-12 grid grid-cols-2 gap-4 max-w-sm">
+              {[
+                { label: 'Countries', value: '4' },
+                { label: 'Departments', value: '2' },
+                { label: 'Workflow Layers', value: '3' },
+                { label: 'Auto-Assignment', value: 'On' },
+              ].map((s, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 + i * 0.1 }}
+                  className="bg-white/5 border border-white/10 rounded-lg p-3"
+                >
+                  <div className="text-xl font-bold text-white">{s.value}</div>
+                  <div className="text-xs text-slate-400">{s.label}</div>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
         </div>
       </div>
-      
-      {/* Right Panel - Login Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gradient-to-br from-slate-50 via-white to-slate-100">
-        <div className="w-full max-w-md">
-          {/* Mobile Logo */}
-          <div className="lg:hidden text-center mb-8">
-            <img src="/logo.svg" alt="Benchmark" className="h-12 w-auto mb-4" />
+
+      {/* Right panel - form */}
+      <div className="flex-1 flex items-center justify-center px-6 bg-[#f8fafc]">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="w-full max-w-sm"
+        >
+          {/* Mobile logo */}
+          <div className="lg:hidden mb-8">
+            <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center mb-4">
+              <span className="text-white font-black text-lg">B</span>
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">Benchmark</h1>
           </div>
-          
-          <div className="text-center lg:text-left mb-8">
-            <h2 className="text-3xl font-bold text-slate-900">Welcome back</h2>
-            <p className="text-slate-500 mt-2">Sign in to access your dashboard</p>
-          </div>
+
+          <h2 className="text-2xl font-bold text-slate-900">Sign in</h2>
+          <p className="text-slate-500 mt-1 text-sm">Enter your credentials to access the dashboard.</p>
 
           {error && (
-            <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-xl animate-fade-in">
-              <p className="text-sm text-rose-700 font-medium">{error}</p>
-            </div>
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="mt-4 p-3 bg-rose-50 border border-rose-100 rounded-lg flex items-center gap-2"
+            >
+              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+              <span className="text-sm text-rose-600">{error}</span>
+            </motion.div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-slate-700 mb-2">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="input input-lg pl-12"
-                  placeholder="your.email@benchmark.com"
-                  required
-                  autoFocus
-                />
-              </div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
+                placeholder="you@benchmark.com"
+                autoComplete="email"
+                autoFocus
+              />
             </div>
-
             <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-slate-700 mb-2">
-                Password
-              </label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
               <div className="relative">
-                <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
                 <input
-                  id="password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="input input-lg pl-12"
-                  placeholder="Enter your password"
-                  required
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all pr-11"
+                  placeholder="Enter password"
+                  autoComplete="current-password"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
-
             <button
               type="submit"
               disabled={loading}
-              className="btn btn-primary w-full py-4 text-base mt-6 group"
+              className="w-full py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98]"
             >
               {loading ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Signing in...
-                </span>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <span className="flex items-center justify-center gap-2">
+                <>
+                  <LogIn className="w-4 h-4" />
                   Sign In
-                  <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-                </span>
+                </>
               )}
             </button>
           </form>
 
-          <div className="mt-8 pt-8 border-t border-slate-200">
-            <div className="flex items-center justify-center gap-2 text-sm text-slate-500">
-              <Shield className="h-4 w-4 text-emerald-500" />
-              <span>Secure session with single-device authentication</span>
-            </div>
-          </div>
-          
-          <p className="text-center text-sm text-slate-400 mt-8">
-            © {new Date().getFullYear()} Benchmark. All rights reserved.
+          <p className="mt-8 text-center text-xs text-slate-400">
+            Single-device authentication enforced.
           </p>
-        </div>
+        </motion.div>
       </div>
     </div>
   );
-};
-
-export default Login;
+}

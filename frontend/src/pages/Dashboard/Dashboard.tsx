@@ -1,26 +1,17 @@
-import { useSelector } from 'react-redux';
-import { Navigate } from 'react-router-dom';
-import type { RootState } from '../../store/store';
-import CEODashboard from './CEODashboard';
-import OperationsManagerDashboard from './OperationsManagerDashboard';
-import WorkerDashboard from './WorkerDashboard';
+import { AnimatedPage, PageHeader } from '../../components/ui';
+import { LayoutDashboard } from 'lucide-react';
 
 export default function Dashboard() {
-  const user = useSelector((state: RootState) => state.auth.user);
-  if (!user) return <Navigate to="/login" />;
-
-  switch (user.role) {
-    case 'ceo':
-    case 'director':
-      return <CEODashboard />;
-    case 'operations_manager':
-      return <OperationsManagerDashboard />;
-    case 'drawer':
-    case 'checker':
-    case 'qa':
-    case 'designer':
-      return <WorkerDashboard />;
-    default:
-      return <WorkerDashboard />;
-  }
+  return (
+    <AnimatedPage>
+      <PageHeader
+        title="Dashboard"
+        subtitle="Welcome to Benchmark Management System"
+      />
+      <div className="bg-white rounded-xl border border-slate-200/60 p-12 text-center">
+        <LayoutDashboard className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+        <p className="text-sm text-slate-500">Your dashboard is being configured.</p>
+      </div>
+    </AnimatedPage>
+  );
 }
