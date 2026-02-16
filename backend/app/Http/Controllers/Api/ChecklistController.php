@@ -118,6 +118,7 @@ class ChecklistController extends Controller
                 'description' => $template->description,
                 'is_required' => $template->is_required,
                 'is_checked' => $completed?->is_checked ?? false,
+                'mistake_count' => $completed?->mistake_count ?? 0,
                 'notes' => $completed?->notes,
                 'completed_at' => $completed?->completed_at,
             ];
@@ -142,6 +143,7 @@ class ChecklistController extends Controller
 
         $validated = $request->validate([
             'is_checked' => 'required|boolean',
+            'mistake_count' => 'nullable|integer|min:0',
             'notes' => 'nullable|string',
         ]);
 
@@ -153,6 +155,7 @@ class ChecklistController extends Controller
             ],
             [
                 'is_checked' => $validated['is_checked'],
+                'mistake_count' => $validated['mistake_count'] ?? 0,
                 'notes' => $validated['notes'] ?? null,
                 'completed_at' => $validated['is_checked'] ? now() : null,
             ]
@@ -177,6 +180,7 @@ class ChecklistController extends Controller
             'items' => 'required|array',
             'items.*.template_id' => 'required|exists:checklist_templates,id',
             'items.*.is_checked' => 'required|boolean',
+            'items.*.mistake_count' => 'nullable|integer|min:0',
             'items.*.notes' => 'nullable|string',
         ]);
 
@@ -189,6 +193,7 @@ class ChecklistController extends Controller
                 ],
                 [
                     'is_checked' => $item['is_checked'],
+                    'mistake_count' => $item['mistake_count'] ?? 0,
                     'notes' => $item['notes'] ?? null,
                     'completed_at' => $item['is_checked'] ? now() : null,
                 ]

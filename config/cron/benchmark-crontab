@@ -1,0 +1,23 @@
+# Benchmark Production Cron Jobs
+# Install with: crontab -e (for www-data user: sudo crontab -u www-data -e)
+
+# Laravel Scheduler (runs every minute)
+* * * * * cd /var/www/benchmark/backend && php artisan schedule:run >> /dev/null 2>&1
+
+# Database Backup (daily at 3 AM)
+0 3 * * * /var/www/benchmark/scripts/backup-database.sh >> /var/log/benchmark/backup.log 2>&1
+
+# System Monitoring (every 5 minutes)
+*/5 * * * * /var/www/benchmark/scripts/production-monitor.sh >> /var/log/benchmark/monitor.log 2>&1
+
+# Clean old logs (weekly, Sunday at 2 AM)
+0 2 * * 0 cd /var/www/benchmark/backend && php artisan telescope:prune >> /dev/null 2>&1
+
+# Horizon metrics snapshot (every hour)
+0 * * * * cd /var/www/benchmark/backend && php artisan horizon:snapshot >> /dev/null 2>&1
+
+# Clean failed jobs older than 30 days (daily at 4 AM)
+0 4 * * * cd /var/www/benchmark/backend && php artisan queue:prune-failed --hours=720 >> /dev/null 2>&1
+
+# Restart Horizon daily (to prevent memory leaks, at 5 AM)
+0 5 * * * cd /var/www/benchmark/backend && php artisan horizon:terminate >> /dev/null 2>&1

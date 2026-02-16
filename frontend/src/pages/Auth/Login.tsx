@@ -4,7 +4,15 @@ import { useDispatch } from 'react-redux';
 import { setCredentials, setLoading as setAuthLoading } from '../../store/slices/authSlice';
 import { authService } from '../../services';
 import { motion } from 'framer-motion';
-import { LogIn, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { LogIn, AlertCircle, Eye, EyeOff, Globe, Building2, Layers, Zap } from 'lucide-react';
+import BenchmarkLogo from '../../components/ui/BenchmarkLogo';
+
+const stats = [
+  { label: 'Countries', value: '4', icon: Globe },
+  { label: 'Departments', value: '2', icon: Building2 },
+  { label: 'Workflow Layers', value: '3', icon: Layers },
+  { label: 'Auto-Assignment', value: 'On', icon: Zap },
+];
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -35,46 +43,60 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left panel - brand */}
-      <div className="hidden lg:flex lg:w-1/2 bg-[#1e3a3a] relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#1e3a3a] via-[#1a4040] to-[#0f2626]" />
-        <div className="absolute inset-0 opacity-5">
-          <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-            {Array.from({ length: 20 }).map((_, i) => (
-              <line key={i} x1={i * 5} y1="0" x2={i * 5} y2="100" stroke="white" strokeWidth="0.1" />
-            ))}
-            {Array.from({ length: 20 }).map((_, i) => (
-              <line key={`h${i}`} x1="0" y1={i * 5} x2="100" y2={i * 5} stroke="white" strokeWidth="0.1" />
-            ))}
-          </svg>
-        </div>
-        <div className="relative z-10 flex flex-col justify-center px-16">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-            <img src="/logo-icon.svg" alt="Benchmark" className="w-12 h-12 mb-8" />
-            <h1 className="text-4xl font-bold text-white leading-tight">
-              Benchmark<br />
-              <span className="text-[#2AA7A0]">Management System</span>
+    <div className="min-h-screen flex" style={{ backgroundColor: '#0d1f1e' }}>
+      {/* Left panel - brand showcase */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden" style={{ backgroundColor: '#0d1f1e' }}>
+        {/* Gradient background */}
+        <div 
+          className="absolute inset-0"
+          style={{
+            background: 'radial-gradient(ellipse 80% 50% at 50% -20%, rgba(42, 167, 160, 0.2), transparent)'
+          }}
+        />
+        
+        {/* Subtle grid */}
+        <div 
+          className="absolute inset-0 opacity-[0.02]"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }}
+        />
+        
+        <div className="relative z-10 flex flex-col justify-center px-16 py-12">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            transition={{ duration: 0.6 }}
+          >
+            {/* Logo */}
+            <div className="mb-12">
+              <BenchmarkLogo size="lg" />
+            </div>
+            
+            {/* Headline */}
+            <h1 className="text-5xl font-bold text-white leading-[1.1] tracking-tight">
+              Benchmark
+              <br />
+              <span style={{ color: '#2AA7A0' }}>Management System</span>
             </h1>
-            <p className="text-slate-400 mt-4 text-lg max-w-md leading-relaxed">
+            
+            <p className="mt-6 text-lg max-w-md leading-relaxed" style={{ color: 'rgba(42, 167, 160, 0.7)' }}>
               Enterprise workflow management for high-volume project operations across multiple regions.
             </p>
-            <div className="mt-12 grid grid-cols-2 gap-4 max-w-sm">
-              {[
-                { label: 'Countries', value: '4' },
-                { label: 'Departments', value: '2' },
-                { label: 'Workflow Layers', value: '3' },
-                { label: 'Auto-Assignment', value: 'On' },
-              ].map((s, i) => (
+            
+            {/* Stats grid */}
+            <div className="mt-12 grid grid-cols-2 gap-3 max-w-sm">
+              {stats.map((s, i) => (
                 <motion.div
                   key={i}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 + i * 0.1 }}
-                  className="bg-white/5 border border-[#2AA7A0]/20 rounded-lg p-3"
+                  className="rounded-xl p-4 bg-[#2AA7A0]/10 border border-[#2AA7A0]/20 hover:border-[#2AA7A0]/40 transition-colors"
                 >
-                  <div className="text-xl font-bold text-white">{s.value}</div>
-                  <div className="text-xs text-slate-400">{s.label}</div>
+                  <s.icon className="w-5 h-5 text-[#2AA7A0] mb-2" />
+                  <div className="text-2xl font-bold text-white">{s.value}</div>
+                  <div className="text-xs text-[#2AA7A0]/60 mt-0.5">{s.label}</div>
                 </motion.div>
               ))}
             </div>
@@ -83,84 +105,93 @@ export default function Login() {
       </div>
 
       {/* Right panel - form */}
-      <div className="flex-1 flex items-center justify-center px-6 bg-[#f8fafc]">
+      <div className="flex-1 flex items-center justify-center px-8 bg-white">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
-          className="w-full max-w-sm"
+          className="w-full max-w-md"
         >
           {/* Mobile logo */}
           <div className="lg:hidden mb-8">
-            <img src="/logo.svg" alt="Benchmark" className="h-10 mb-4" />
+            <BenchmarkLogo size="md" />
           </div>
 
-          <h2 className="text-2xl font-bold text-slate-900">Sign in</h2>
-          <p className="text-slate-500 mt-1 text-sm">Enter your credentials to access the dashboard.</p>
+          <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Welcome back</h2>
+          <p className="text-slate-500 mt-2">Sign in to continue to your dashboard.</p>
 
           {error && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="mt-4 p-3 bg-rose-50 border border-rose-100 rounded-lg flex items-center gap-2"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-6 p-4 rounded-xl flex items-center gap-3 bg-red-50 border border-red-200"
             >
-              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-              <span className="text-sm text-rose-600">{error}</span>
+              <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+              <span className="text-sm text-red-700">{error}</span>
             </motion.div>
           )}
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Email address</label>
               <input
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2AA7A0] focus:border-transparent transition-all"
+                className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-[#2AA7A0] focus:ring-2 focus:ring-[#2AA7A0]/20 transition-all"
                 placeholder="you@benchmark.com"
                 autoComplete="email"
                 autoFocus
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Password</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2AA7A0] focus:border-transparent transition-all pr-11"
-                  placeholder="Enter password"
+                  className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-[#2AA7A0] focus:ring-2 focus:ring-[#2AA7A0]/20 transition-all pr-12"
+                  placeholder="Enter your password"
                   autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
             </div>
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-[#2AA7A0] text-white text-sm font-medium rounded-xl hover:bg-[#228a84] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98]"
+              className="w-full py-3.5 text-white font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98]"
+              style={{ 
+                backgroundColor: '#2AA7A0',
+                boxShadow: '0 10px 25px -5px rgba(42, 167, 160, 0.3)'
+              }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#239089')}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#2AA7A0')}
             >
               {loading ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  <LogIn className="w-4 h-4" />
+                  <LogIn className="w-5 h-5" />
                   Sign In
                 </>
               )}
             </button>
           </form>
 
-          <p className="mt-8 text-center text-xs text-slate-400">
-            Single-device authentication enforced.
-          </p>
+          <div className="mt-10 pt-6 border-t border-slate-100">
+            <p className="text-center text-sm text-slate-400">
+              🔒 Single-device authentication enforced
+            </p>
+          </div>
         </motion.div>
       </div>
     </div>

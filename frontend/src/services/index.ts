@@ -4,6 +4,7 @@ import type {
   Project, ProjectInput, Team,
   Order, WorkItem, MonthLock, Invoice, InvoiceInput,
   MasterDashboard, ProjectDashboard, WorkerDashboardData, OpsDashboardData, QueueHealth,
+  DailyOperationsData,
   PaginatedResponse, Notification,
   OrderImportSource, OrderImportLog, ChecklistTemplate, OrderChecklist,
   WorkflowState, InvoiceStatus,
@@ -30,6 +31,27 @@ export const workflowService = {
 
   // Worker: Get current assigned order
   myCurrent: () => api.get<{ order: Order | null }>('/workflow/my-current'),
+  
+  // Worker: Get queue of orders assigned to worker
+  getQueue: () => api.get<{ orders: Order[] }>('/workflow/my-queue'),
+  
+  // Worker: Get completed orders today
+  getCompleted: () => api.get<{ orders: Order[] }>('/workflow/my-completed'),
+  
+  // Worker: Get order history (all time)
+  getHistory: (page?: number) => api.get<{ data: Order[]; current_page: number; last_page: number }>('/workflow/my-history', { params: { page } }),
+  
+  // Worker: Get performance stats
+  getPerformance: () => api.get<{
+    today_completed: number;
+    week_completed: number;
+    month_completed: number;
+    daily_target: number;
+    weekly_target: number;
+    weekly_rate: number;
+    avg_time_minutes: number;
+    daily_stats: Array<{ date: string; day: string; count: number }>;
+  }>('/workflow/my-performance'),
 
   // Worker: Submit completed work
   submitWork: (orderId: number, comments?: string) =>
@@ -37,6 +59,36 @@ export const workflowService = {
 
   // Worker: My daily stats
   myStats: () => api.get<{ today_completed: number; daily_target: number; wip_count: number; queue_count: number; is_absent: boolean }>('/workflow/my-stats'),
+  
+  // Worker: Reassign order back to queue
+  reassignToQueue: (orderId: number, reason?: string) =>
+    api.post<{ order: Order; message: string }>(`/workflow/orders/${orderId}/reassign-queue`, { reason }),
+  
+  // Worker: Flag issue on order
+  flagIssue: (orderId: number, flagType: string, description: string, severity?: string) =>
+    api.post<{ flag: any; message: string }>(`/workflow/orders/${orderId}/flag-issue`, { flag_type: flagType, description, severity }),
+  
+  // Worker: Request help/clarification
+  requestHelp: (orderId: number, question: string) =>
+    api.post<{ help_request: any; message: string }>(`/workflow/orders/${orderId}/request-help`, { question }),
+  
+  // Worker: Timer controls
+  startTimer: (orderId: number) =>
+    api.post<{ work_item: WorkItem; message: string }>(`/workflow/orders/${orderId}/timer/start`),
+  stopTimer: (orderId: number) =>
+    api.post<{ work_item: WorkItem; time_added_seconds: number; total_time_seconds: number; message: string }>(`/workflow/orders/${orderId}/timer/stop`),
+  
+  // Worker: Full order details
+  orderFullDetails: (orderId: number) =>
+    api.get<{
+      order: Order;
+      supervisor_notes: string | null;
+      attachments: Array<{ name: string; url: string; type: string }>;
+      help_requests: any[];
+      issue_flags: any[];
+      current_time_seconds: number;
+      timer_running: boolean;
+    }>(`/workflow/orders/${orderId}/full-details`),
 
   // Checker/QA: Reject order (mandatory reason)
   rejectOrder: (orderId: number, reason: string, rejectionCode: string, routeTo?: string) =>
@@ -95,6 +147,10 @@ export const dashboardService = {
 
   // Absentees
   absentees: () => api.get<{ absentees: User[] }>('/dashboard/absentees'),
+
+  // CEO: Daily Operations - All projects with layer-wise worker activity
+  dailyOperations: (date?: string) =>
+    api.get<DailyOperationsData>('/dashboard/daily-operations', { params: date ? { date } : {} }),
 };
 
 // ═══════════════════════════════════════════

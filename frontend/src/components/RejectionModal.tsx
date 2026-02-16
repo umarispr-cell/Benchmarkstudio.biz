@@ -32,14 +32,14 @@ const rejectionTypes = [
     label: 'Wrong Specifications', 
     description: 'Does not match the requirements',
     icon: HelpCircle,
-    color: 'from-violet-500 to-purple-600'
+    color: 'from-brand-500 to-brand-600'
   },
   { 
     value: 'rework', 
     label: 'Needs Rework', 
     description: 'Requires corrections or adjustments',
     icon: RefreshCcw,
-    color: 'from-blue-500 to-indigo-600'
+    color: 'from-brand-500 to-brand-600'
   },
 ];
 
@@ -113,7 +113,7 @@ const RejectionModal = ({ orderId, orderNumber, onReject, onClose }: RejectionMo
                     className={`p-4 rounded-xl border-2 transition-all text-left ${
                       isSelected
                         ? 'border-rose-400 bg-rose-50'
-                        : 'border-slate-200 hover:border-violet-300 bg-white'
+                        : 'border-slate-200 hover:border-brand-300 bg-white'
                     }`}
                   >
                     <div className={`p-2 rounded-lg bg-gradient-to-br ${type.color} w-fit mb-2`}>
@@ -141,7 +141,7 @@ const RejectionModal = ({ orderId, orderNumber, onReject, onClose }: RejectionMo
               onChange={(e) => setReason(e.target.value)}
               placeholder="Explain what needs to be fixed or corrected (minimum 10 characters)..."
               rows={4}
-              className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:ring-2 focus:ring-violet-500 focus:border-violet-500 resize-none"
+              className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 resize-none"
             />
             <p className="text-xs text-slate-500 mt-1">
               {reason.length}/10 characters minimum

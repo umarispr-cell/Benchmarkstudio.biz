@@ -14,12 +14,14 @@ class OrderChecklist extends Model
         'checklist_template_id',
         'completed_by',
         'is_checked',
+        'mistake_count',
         'notes',
         'completed_at',
     ];
 
     protected $casts = [
         'is_checked' => 'boolean',
+        'mistake_count' => 'integer',
         'completed_at' => 'datetime',
     ];
 

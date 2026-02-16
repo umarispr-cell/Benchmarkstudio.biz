@@ -29,6 +29,8 @@ class Invoice extends Model
     protected $casts = [
         'service_counts' => 'array',
         'total_amount' => 'decimal:2',
+        'month' => 'integer',
+        'year' => 'integer',
         'approved_at' => 'datetime',
         'issued_at' => 'datetime',
         'sent_at' => 'datetime',

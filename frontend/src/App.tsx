@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import type { RootState } from './store/store';
+import { authService } from './services';
 import Login from './pages/Auth/Login';
 import Dashboard from './pages/Dashboard/Dashboard';
 import CEODashboard from './pages/Dashboard/CEODashboard';
@@ -27,18 +28,11 @@ function App() {
       // Set up session check interval (every 5 minutes)
       const sessionCheck = setInterval(async () => {
         try {
-          const response = await fetch('/api/auth/session-check', {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            },
-          });
-          if (!response.ok) {
-            // Session invalid, logout
-            localStorage.removeItem('token');
-            window.location.href = '/login';
-          }
-        } catch (error) {
-          console.error('Session check failed:', error);
+          await authService.sessionCheck();
+        } catch {
+          // Session invalid, logout
+          localStorage.removeItem('token');
+          window.location.href = '/login';
         }
       }, 5 * 60 * 1000);
 
@@ -120,7 +114,7 @@ function App() {
           <Route 
             path="import/*" 
             element={
-              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager', 'supervisor']}>
+              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager']}>
                 <ImportOrders />
               </ProtectedRoute>
             } 
@@ -129,7 +123,7 @@ function App() {
           <Route 
             path="rejected/*" 
             element={
-              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager', 'supervisor', 'drawer', 'checker', 'qa', 'designer']}>
+              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager', 'drawer', 'checker', 'qa', 'designer']}>
                 <RejectedOrders />
               </ProtectedRoute>
             } 
@@ -138,7 +132,7 @@ function App() {
           <Route 
             path="assign/*" 
             element={
-              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager', 'supervisor']}>
+              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager']}>
                 <SupervisorAssignment />
               </ProtectedRoute>
             } 

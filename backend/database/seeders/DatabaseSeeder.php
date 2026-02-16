@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             TeamSeeder::class,
             UserSeeder::class,
             OrderSeeder::class,
+            ChecklistTemplateSeeder::class,
         ]);
     }
 }

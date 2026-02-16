@@ -70,7 +70,7 @@ return new class extends Migration
             $table->timestamp('completed_at')->nullable();
             $table->timestamps();
             
-            $table->unique(['order_id', 'checklist_template_id', 'completed_by']);
+            $table->unique(['order_id', 'checklist_template_id', 'completed_by'], 'order_checklist_unique');
         });
 
         // Add rejection/recheck fields to orders

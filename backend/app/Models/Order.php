@@ -20,6 +20,8 @@ class Order extends Model
         'client_portal_id', 'client_portal_synced_at',
         'attempt_draw', 'attempt_check', 'attempt_qa',
         'is_on_hold', 'hold_reason', 'hold_set_by',
+        'supervisor_notes', 'attachments',
+        'pre_hold_state',
     ];
 
     protected $casts = [
@@ -31,6 +33,7 @@ class Order extends Model
         'client_portal_synced_at' => 'datetime',
         'due_date' => 'date',
         'metadata' => 'array',
+        'attachments' => 'array',
         'checker_self_corrected' => 'boolean',
         'is_on_hold' => 'boolean',
     ];

@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/store';
 import { projectService } from '../../services';
 import type { Project } from '../../types';
-import { AnimatedPage, PageHeader, StatusBadge, Modal, Button, DataTable, FilterBar } from '../../components/ui';
+import { AnimatedPage, PageHeader, StatusBadge, Modal, Button, DataTable, FilterBar, Input, Textarea, Select } from '../../components/ui';
 import { FolderKanban, Plus, Edit, Trash2, Users, BarChart3, MapPin } from 'lucide-react';
 
 const emptyForm = {
@@ -26,6 +26,7 @@ export default function ProjectManagement() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [showStats, setShowStats] = useState<Project | null>(null);
   const [showTeams, setShowTeams] = useState<Project | null>(null);
   const [projectStats, setProjectStats] = useState<any>(null);
@@ -68,7 +69,16 @@ export default function ProjectManagement() {
   };
 
   const handleDelete = async (id: number) => {
-    try { await projectService.delete(id); setDeleteConfirm(null); loadProjects(); } catch (e) { console.error(e); }
+    try { 
+      setDeleting(true);
+      await projectService.delete(id); 
+      setDeleteConfirm(null); 
+      loadProjects(); 
+    } catch (e) { 
+      console.error(e); 
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleViewStats = async (p: Project) => {
@@ -95,9 +105,9 @@ export default function ProjectManagement() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
           { label: 'Total', value: projects.length, icon: FolderKanban, bg: 'bg-slate-100', color: 'text-slate-600' },
-          { label: 'Active', value: projects.filter(p => p.status === 'active').length, icon: FolderKanban, bg: 'bg-emerald-50', color: 'text-emerald-600' },
+          { label: 'Active', value: projects.filter(p => p.status === 'active').length, icon: FolderKanban, bg: 'bg-brand-50', color: 'text-brand-600' },
           { label: 'Countries', value: new Set(projects.map(p => p.country)).size, icon: MapPin, bg: 'bg-blue-50', color: 'text-blue-600' },
-          { label: 'Teams', value: projects.reduce((s, p) => s + (p.total_teams || 0), 0), icon: Users, bg: 'bg-violet-50', color: 'text-violet-600' },
+          { label: 'Teams', value: projects.reduce((s, p) => s + (p.total_teams || 0), 0), icon: Users, bg: 'bg-brand-50', color: 'text-brand-600' },
         ].map((s, i) => (
           <div key={i} className="bg-white rounded-xl border border-slate-200/60 p-4 flex items-center gap-3">
             <div className={`w-10 h-10 rounded-lg ${s.bg} flex items-center justify-center`}><s.icon className={`w-5 h-5 ${s.color}`} /></div>
@@ -109,12 +119,12 @@ export default function ProjectManagement() {
       {/* Filters */}
       <FilterBar searchValue={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Search projects..."
         filters={<>
-          <select value={selectedCountry} onChange={e => setSelectedCountry(e.target.value)} className="select text-sm">
+          <select value={selectedCountry} onChange={e => setSelectedCountry(e.target.value)} className="select text-sm" aria-label="Filter by country">
             <option value="all">All Countries</option>
             <option value="UK">UK</option><option value="Australia">Australia</option>
             <option value="Canada">Canada</option><option value="USA">USA</option>
           </select>
-          <select value={selectedDepartment} onChange={e => setSelectedDepartment(e.target.value)} className="select text-sm">
+          <select value={selectedDepartment} onChange={e => setSelectedDepartment(e.target.value)} className="select text-sm" aria-label="Filter by department">
             <option value="all">All Departments</option>
             <option value="floor_plan">Floor Plan</option><option value="photos_enhancement">Photos Enhancement</option>
           </select>
@@ -141,7 +151,7 @@ export default function ProjectManagement() {
                 <span className="font-semibold text-slate-900">{p.total_orders}</span>
                 {p.total_orders > 0 && (
                   <div className="w-20 h-1.5 bg-slate-100 rounded-full mt-1">
-                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min((p.completed_orders / p.total_orders) * 100, 100)}%` }} />
+                    <div className="h-full bg-brand-500 rounded-full" style={{ width: `${Math.min((p.completed_orders / p.total_orders) * 100, 100)}%` }} />
                   </div>
                 )}
               </div>
@@ -162,36 +172,142 @@ export default function ProjectManagement() {
       </div>
 
       {/* Create/Edit Modal */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editingProject ? 'Edit Project' : 'New Project'} size="lg">
-        {formError && <div className="mb-4 p-3 bg-rose-50 border border-rose-100 rounded-lg text-sm text-rose-600">{formError}</div>}
-        <div className="space-y-4">
-          <div><label className="label">Name *</label><input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="input" placeholder="Project name" /></div>
+      <Modal 
+        open={showModal} 
+        onClose={() => setShowModal(false)} 
+        title={editingProject ? 'Edit Project' : 'Create New Project'}
+        subtitle={editingProject ? 'Update project information' : 'Add a new project to the system'}
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button 
+              className="flex-1" 
+              onClick={handleSave} 
+              loading={saving}
+              disabled={!formData.name || !formData.code || !formData.client_name}
+            >
+              {editingProject ? 'Update Project' : 'Create Project'}
+            </Button>
+          </>
+        }
+      >
+        {formError && (
+          <div className="mb-4 p-4 bg-rose-50 border-l-4 border-rose-400 rounded-lg">
+            <p className="text-sm font-medium text-rose-800">{formError}</p>
+          </div>
+        )}
+        <div className="space-y-5">
+          <Input
+            id="project-name"
+            label="Project Name"
+            required
+            type="text"
+            value={formData.name}
+            onChange={e => setFormData({ ...formData, name: e.target.value })}
+            placeholder="e.g., Luxury Apartments London"
+            maxLength={100}
+            showCharCount
+            currentLength={formData.name.length}
+          />
+
           <div className="grid grid-cols-2 gap-4">
-            <div><label className="label">Code *</label><input type="text" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} className="input" placeholder="PRJ-001" /></div>
-            <div><label className="label">Client *</label><input type="text" value={formData.client_name} onChange={e => setFormData({ ...formData, client_name: e.target.value })} className="input" placeholder="Client name" /></div>
+            <Input
+              id="project-code"
+              label="Project Code"
+              required
+              type="text"
+              value={formData.code}
+              onChange={e => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+              placeholder="PRJ-001"
+              maxLength={20}
+              hint="Unique identifier for this project"
+            />
+            <Input
+              id="client-name"
+              label="Client Name"
+              required
+              type="text"
+              value={formData.client_name}
+              onChange={e => setFormData({ ...formData, client_name: e.target.value })}
+              placeholder="Client or company name"
+              maxLength={100}
+            />
           </div>
+
           <div className="grid grid-cols-3 gap-4">
-            <div><label className="label">Country</label><select value={formData.country} onChange={e => setFormData({ ...formData, country: e.target.value })} className="select"><option value="UK">UK</option><option value="Australia">Australia</option><option value="Canada">Canada</option><option value="USA">USA</option></select></div>
-            <div><label className="label">Department</label><select value={formData.department} onChange={e => setFormData({ ...formData, department: e.target.value })} className="select"><option value="floor_plan">Floor Plan</option><option value="photos_enhancement">Photos Enhancement</option></select></div>
-            <div><label className="label">Status</label><select value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} className="select"><option value="active">Active</option><option value="paused">Paused</option><option value="completed">Completed</option></select></div>
+            <Select
+              id="country"
+              label="Country"
+              value={formData.country}
+              onChange={e => setFormData({ ...formData, country: e.target.value })}
+            >
+              <option value="UK">United Kingdom</option>
+              <option value="Australia">Australia</option>
+              <option value="Canada">Canada</option>
+              <option value="USA">United States</option>
+            </Select>
+
+            <Select
+              id="department"
+              label="Department"
+              value={formData.department}
+              onChange={e => setFormData({ ...formData, department: e.target.value })}
+            >
+              <option value="floor_plan">Floor Plan</option>
+              <option value="photos_enhancement">Photos Enhancement</option>
+            </Select>
+
+            <Select
+              id="status"
+              label="Status"
+              value={formData.status}
+              onChange={e => setFormData({ ...formData, status: e.target.value })}
+            >
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="completed">Completed</option>
+            </Select>
           </div>
-          <div><label className="label">Description</label><textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="textarea" rows={3} placeholder="Optional description" /></div>
-        </div>
-        <div className="mt-6 flex gap-3">
-          <Button variant="secondary" className="flex-1" onClick={() => setShowModal(false)}>Cancel</Button>
-          <Button className="flex-1" onClick={handleSave} loading={saving}>{editingProject ? 'Update' : 'Create'}</Button>
+
+          <Textarea
+            id="description"
+            label="Description"
+            value={formData.description}
+            onChange={e => setFormData({ ...formData, description: e.target.value })}
+            rows={3}
+            placeholder="Optional project description or notes"
+            maxLength={500}
+            showCharCount
+            currentLength={formData.description.length}
+          />
         </div>
       </Modal>
 
       {/* Delete Confirm */}
-      <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Project?" size="sm">
+      <Modal 
+        open={!!deleteConfirm} 
+        onClose={() => setDeleteConfirm(null)} 
+        title="Delete Project?" 
+        subtitle="This action cannot be undone"
+        variant="danger"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteConfirm(null)} className="flex-1">Cancel</Button>
+            <Button variant="danger" onClick={() => deleteConfirm && handleDelete(deleteConfirm)} loading={deleting} className="flex-1">Delete Project</Button>
+          </>
+        }
+      >
         <div className="text-center py-4">
-          <div className="w-14 h-14 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-3"><Trash2 className="w-7 h-7 text-rose-500" /></div>
-          <p className="text-sm text-slate-500">This action cannot be undone.</p>
-        </div>
-        <div className="flex gap-3">
-          <Button variant="secondary" className="flex-1" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
-          <Button variant="danger" className="flex-1" onClick={() => deleteConfirm && handleDelete(deleteConfirm)}>Delete</Button>
+          <div className="mb-4">
+            <p className="text-base text-slate-700 font-medium mb-2">
+              Are you sure you want to delete <span className="font-bold text-slate-900">{projects.find(p => p.id === deleteConfirm)?.name}</span>?
+            </p>
+            <p className="text-sm text-slate-600">
+              All associated data, teams, and orders will be affected. This action is permanent and cannot be reversed.
+            </p>
+          </div>
         </div>
       </Modal>
 

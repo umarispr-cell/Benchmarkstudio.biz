@@ -1,0 +1,29 @@
+[Unit]
+Description=Benchmark Laravel API Server
+After=network.target mysql.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/benchmark/backend
+
+# Use PHP-FPM instead of artisan serve in production
+# This is just for reference - use Nginx + PHP-FPM in production
+ExecStart=/usr/bin/php /var/www/benchmark/backend/artisan serve --host=0.0.0.0 --port=8000
+
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=benchmark-api
+
+# Environment
+Environment="APP_ENV=production"
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

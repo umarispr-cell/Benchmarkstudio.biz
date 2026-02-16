@@ -1,0 +1,33 @@
+[Unit]
+Description=Benchmark Laravel Horizon Queue Worker
+After=network.target mysql.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/benchmark/backend
+
+ExecStart=/usr/bin/php /var/www/benchmark/backend/artisan horizon
+ExecReload=/bin/kill -USR2 $MAINPID
+
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=benchmark-horizon
+
+# Environment
+Environment="APP_ENV=production"
+
+# Graceful shutdown
+TimeoutStopSec=3600
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

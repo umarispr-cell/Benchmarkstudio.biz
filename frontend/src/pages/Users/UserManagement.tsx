@@ -6,7 +6,7 @@ import type { User } from '../../types';
 import { AnimatedPage, PageHeader, StatusBadge, Modal, Button, DataTable, FilterBar } from '../../components/ui';
 import { Users as UsersIcon, Plus, Edit, Trash2, UserCheck, UserX, Shield, Activity } from 'lucide-react';
 
-const emptyForm = { name: '', email: '', password: '', role: 'worker', country: 'UK', department: 'floor_plan', layer: '' };
+const emptyForm = { name: '', email: '', password: '', role: 'drawer', country: 'UK', department: 'floor_plan', layer: '' };
 const FLAGS: Record<string, string> = { UK: '\u{1F1EC}\u{1F1E7}', Australia: '\u{1F1E6}\u{1F1FA}', Canada: '\u{1F1E8}\u{1F1E6}', USA: '\u{1F1FA}\u{1F1F8}' };
 
 export default function UserManagement() {
@@ -87,8 +87,8 @@ export default function UserManagement() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
           { label: 'Total', value: users.length, icon: UsersIcon, bg: 'bg-slate-100', color: 'text-slate-600' },
-          { label: 'Active', value: users.filter(u => u.is_active).length, icon: UserCheck, bg: 'bg-emerald-50', color: 'text-emerald-600' },
-          { label: 'Managers', value: users.filter(u => ['ceo', 'director', 'operations_manager'].includes(u.role)).length, icon: Shield, bg: 'bg-violet-50', color: 'text-violet-600' },
+          { label: 'Active', value: users.filter(u => u.is_active).length, icon: UserCheck, bg: 'bg-brand-50', color: 'text-brand-600' },
+          { label: 'Managers', value: users.filter(u => ['ceo', 'director', 'operations_manager'].includes(u.role)).length, icon: Shield, bg: 'bg-brand-50', color: 'text-brand-600' },
           { label: 'Production', value: users.filter(u => ['drawer', 'checker', 'qa', 'designer'].includes(u.role)).length, icon: Activity, bg: 'bg-blue-50', color: 'text-blue-600' },
         ].map((s, i) => (
           <div key={i} className="bg-white rounded-xl border border-slate-200/60 p-4 flex items-center gap-3">
@@ -128,7 +128,7 @@ export default function UserManagement() {
                 <div>
                   <div className="font-semibold text-slate-900 flex items-center gap-2">
                     {u.name}
-                    <span className={`w-2 h-2 rounded-full ${u.is_active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                    <span className={`w-2 h-2 rounded-full ${u.is_active ? 'bg-brand-500' : 'bg-slate-300'}`} />
                   </div>
                   <div className="text-xs text-slate-400">{u.email}</div>
                 </div>
@@ -143,7 +143,7 @@ export default function UserManagement() {
             { key: 'actions', label: '', render: (u) => canManage ? (
               <div className="flex items-center gap-1 justify-end">
                 <Button variant="ghost" size="xs" onClick={() => handleToggleActive(u)} title={u.is_active ? 'Deactivate' : 'Activate'}>
-                  {u.is_active ? <UserX className="w-3.5 h-3.5 text-amber-500" /> : <UserCheck className="w-3.5 h-3.5 text-emerald-500" />}
+                  {u.is_active ? <UserX className="w-3.5 h-3.5 text-amber-500" /> : <UserCheck className="w-3.5 h-3.5 text-brand-500" />}
                 </Button>
                 <Button variant="ghost" size="xs" onClick={() => openEdit(u)}><Edit className="w-3.5 h-3.5" /></Button>
                 <Button variant="ghost" size="xs" onClick={() => setDeleteConfirm(u.id)}><Trash2 className="w-3.5 h-3.5 text-rose-500" /></Button>

@@ -48,6 +48,9 @@ class User extends Authenticatable
             'password' => 'hashed',
             'last_activity' => 'datetime',
             'is_active' => 'boolean',
+            'is_absent' => 'boolean',
+            'shift_start' => 'datetime:H:i',
+            'shift_end' => 'datetime:H:i',
         ];
     }
 

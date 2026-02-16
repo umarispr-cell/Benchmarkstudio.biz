@@ -139,14 +139,14 @@ export default function ImportOrders() {
 
       {/* Import Result */}
       {importResult && (
-        <div className={`rounded-xl border p-4 mb-6 ${importResult.error ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}>
+        <div className={`rounded-xl border p-4 mb-6 ${importResult.error ? 'bg-rose-50 border-rose-200' : 'bg-brand-50 border-brand-200'}`}>
           {importResult.error ? (
             <div className="flex items-center gap-2 text-sm text-rose-700">
               <XCircle className="w-4 h-4" /> {importResult.error}
             </div>
           ) : (
             <div>
-              <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 mb-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-brand-700 mb-2">
                 <CheckCircle className="w-4 h-4" /> Import Complete
               </div>
               <div className="grid grid-cols-3 gap-3 text-sm">
@@ -155,7 +155,7 @@ export default function ImportOrders() {
                   <div className="text-xs text-slate-500">Total Rows</div>
                 </div>
                 <div className="bg-white/60 rounded-lg p-2 text-center">
-                  <div className="font-bold text-emerald-600">{importResult.imported || 0}</div>
+                  <div className="font-bold text-brand-600">{importResult.imported || 0}</div>
                   <div className="text-xs text-slate-500">Imported</div>
                 </div>
                 <div className="bg-white/60 rounded-lg p-2 text-center">
@@ -186,7 +186,7 @@ export default function ImportOrders() {
           )},
           { key: 'status', label: 'Status', render: (h) => <StatusBadge status={h.status || 'completed'} size="xs" /> },
           { key: 'total_rows', label: 'Total', render: (h) => <span className="font-medium text-slate-900">{h.total_rows || 0}</span> },
-          { key: 'imported_count', label: 'Imported', render: (h) => <span className="text-emerald-600 font-medium">{h.imported_count || 0}</span> },
+          { key: 'imported_count', label: 'Imported', render: (h) => <span className="text-brand-600 font-medium">{h.imported_count || 0}</span> },
           { key: 'skipped_count', label: 'Skipped', render: (h) => <span className="text-amber-600">{h.skipped_count || 0}</span> },
         ]}
         emptyIcon={FileSpreadsheet}

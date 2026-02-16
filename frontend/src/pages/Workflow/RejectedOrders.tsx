@@ -91,7 +91,7 @@ export default function RejectedOrders() {
           <div className="text-xs text-slate-500">By Checker</div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200/60 p-4">
-          <div className="text-2xl font-bold text-violet-600">{byQA}</div>
+          <div className="text-2xl font-bold text-brand-600">{byQA}</div>
           <div className="text-xs text-slate-500">By QA</div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200/60 p-4">

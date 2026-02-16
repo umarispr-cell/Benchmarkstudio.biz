@@ -249,6 +249,7 @@ export interface OrgTotals {
   total_staff: number;
   active_staff: number;
   absentees: number;
+  inactive_flagged: number; // Users inactive 15+ days per CEO requirements
   orders_received_today: number;
   orders_delivered_today: number;
   orders_received_week: number;
@@ -256,6 +257,13 @@ export interface OrgTotals {
   orders_received_month: number;
   orders_delivered_month: number;
   total_pending: number;
+  // Overtime/Productivity Analysis per CEO requirements
+  standard_shift_hours: number;
+  staff_with_overtime: number;
+  staff_under_target: number;
+  target_hit_rate: number;
+  staff_achieved_target: number;
+  staff_with_targets: number;
 }
 
 export interface CountryDashboard {
@@ -330,7 +338,32 @@ export interface OpsDashboardData {
   total_absent?: number;
   total_pending?: number;
   total_delivered_today?: number;
+  role_stats?: Record<string, {
+    total_staff: number;
+    active: number;
+    absent: number;
+    today_completed: number;
+    total_wip: number;
+  }>;
+  date_stats?: Array<{
+    date: string;
+    label: string;
+    received: number;
+    delivered: number;
+    by_role: Record<string, number>;
+  }>;
   absentees?: Array<{ id: number; name: string; role: string; reassigned_count?: number }>;
+  workers?: Array<{
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+    is_active: boolean;
+    is_absent: boolean;
+    wip_count: number;
+    today_completed: number;
+    last_activity: string | null;
+  }>;
 }
 
 export interface OpsProjectItem {
@@ -339,6 +372,18 @@ export interface OpsProjectItem {
   delivered_today: number;
   total_staff: number;
   active_staff: number;
+  queue_health?: {
+    stages: Record<string, number>;
+    staffing: Array<{
+      id: number;
+      name: string;
+      role: string;
+      is_online: boolean;
+      is_absent: boolean;
+      wip_count: number;
+      today_completed: number;
+    }>;
+  };
 }
 
 export interface QueueHealth {
@@ -350,6 +395,68 @@ export interface QueueHealth {
   sla_breaches: number;
   total_pending: number;
   total_delivered: number;
+}
+
+// ═══════════════════════════════════════════
+// DAILY OPERATIONS (CEO View)
+// ═══════════════════════════════════════════
+
+export interface DailyOperationsWorker {
+  id: number;
+  name: string;
+  completed: number;
+  orders: string[];
+  has_more?: boolean;
+}
+
+export interface DailyOperationsLayer {
+  total: number;
+  workers: DailyOperationsWorker[];
+}
+
+export interface DailyOperationsQAChecklist {
+  total_orders: number;
+  total_items: number;
+  completed_items: number;
+  mistake_count: number;
+  compliance_rate: number;
+}
+
+export interface DailyOperationsProject {
+  id: number;
+  code: string;
+  name: string;
+  country: string;
+  department: string;
+  workflow_type: WorkflowType;
+  received: number;
+  delivered: number;
+  pending: number;
+  layers: Record<string, DailyOperationsLayer>;
+  qa_checklist: DailyOperationsQAChecklist;
+}
+
+export interface DailyOperationsCountry {
+  country: string;
+  project_count: number;
+  total_received: number;
+  total_delivered: number;
+  total_pending: number;
+}
+
+export interface DailyOperationsTotals {
+  projects: number;
+  received: number;
+  delivered: number;
+  pending: number;
+  total_work_items: number;
+}
+
+export interface DailyOperationsData {
+  date: string;
+  totals: DailyOperationsTotals;
+  by_country: DailyOperationsCountry[];
+  projects: DailyOperationsProject[];
 }
 
 // ═══════════════════════════════════════════
@@ -438,6 +545,7 @@ export interface ChecklistItem {
   is_checked: boolean;
   is_required?: boolean;
   description?: string;
+  mistake_count?: number;
   notes?: string;
   completed_at?: string;
   completed_by?: number;
@@ -460,6 +568,7 @@ export interface OrderChecklist {
   checklist_template_id: number;
   completed_by: number | null;
   is_checked: boolean;
+  mistake_count: number;
   notes: string;
   completed_at: string | null;
 }

@@ -12,6 +12,7 @@ class WorkItem extends Model
     protected $fillable = [
         'order_id', 'project_id', 'stage', 'assigned_user_id', 'team_id',
         'status', 'assigned_at', 'started_at', 'completed_at',
+        'time_spent_seconds', 'last_timer_start',
         'comments', 'flags', 'rework_reason', 'rejection_code', 'attempt_number',
     ];
 
@@ -19,6 +20,7 @@ class WorkItem extends Model
         'assigned_at' => 'datetime',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'last_timer_start' => 'datetime',
         'flags' => 'array',
     ];
 

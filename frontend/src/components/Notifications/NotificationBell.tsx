@@ -12,16 +12,16 @@ import {
 } from '../../store/slices/notificationSlice';
 
 const TYPE_CONFIG: Record<NotificationType, { icon: typeof Bell; color: string; bg: string }> = {
-  order_assigned:     { icon: Package,        color: 'text-teal-600',    bg: 'bg-teal-50'    },
-  work_submitted:     { icon: Check,          color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  order_assigned:     { icon: Package,        color: 'text-brand-600',   bg: 'bg-brand-50'   },
+  work_submitted:     { icon: Check,          color: 'text-brand-600',   bg: 'bg-brand-50'   },
   order_rejected:     { icon: AlertTriangle,  color: 'text-red-600',     bg: 'bg-red-50'     },
   order_received:     { icon: Package,        color: 'text-blue-600',    bg: 'bg-blue-50'    },
   order_on_hold:      { icon: Clock,          color: 'text-amber-600',   bg: 'bg-amber-50'   },
-  order_resumed:      { icon: Check,          color: 'text-teal-600',    bg: 'bg-teal-50'    },
-  order_delivered:    { icon: CheckCheck,      color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  order_resumed:      { icon: Check,          color: 'text-brand-600',   bg: 'bg-brand-50'   },
+  order_delivered:    { icon: CheckCheck,      color: 'text-brand-600',  bg: 'bg-brand-50'   },
   user_deactivated:   { icon: UserX,          color: 'text-red-600',     bg: 'bg-red-50'     },
   force_logout:       { icon: UserX,          color: 'text-red-600',     bg: 'bg-red-50'     },
-  invoice_transition: { icon: FileText,       color: 'text-violet-600',  bg: 'bg-violet-50'  },
+  invoice_transition: { icon: FileText,       color: 'text-brand-600',   bg: 'bg-brand-50'   },
   month_locked:       { icon: Lock,           color: 'text-slate-600',   bg: 'bg-slate-100'  },
 };
 

@@ -116,7 +116,7 @@ export default function InvoiceManagement() {
           <div><div className="text-2xl font-bold text-slate-900">{filtered.length}</div><div className="text-xs text-slate-500">Total Invoices</div></div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200/60 p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center"><DollarSign className="w-5 h-5 text-emerald-600" /></div>
+          <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center"><DollarSign className="w-5 h-5 text-brand-600" /></div>
           <div><div className="text-2xl font-bold text-slate-900">${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div><div className="text-xs text-slate-500">Total Amount</div></div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200/60 p-4 flex items-center gap-3">

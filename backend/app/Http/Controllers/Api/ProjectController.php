@@ -138,4 +138,17 @@ class ProjectController extends Controller
 
         return response()->json($stats);
     }
+
+    /**
+     * Get teams for a project.
+     */
+    public function teams(string $id)
+    {
+        $project = Project::findOrFail($id);
+        $teams = $project->teams()->with('users:id,name,email,role,team_id,is_active,is_absent')->get();
+
+        return response()->json([
+            'data' => $teams,
+        ]);
+    }
 }

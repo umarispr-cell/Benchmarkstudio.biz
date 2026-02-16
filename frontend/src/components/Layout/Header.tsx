@@ -56,7 +56,7 @@ export default function Header() {
 
   return (
     <>
-      <header className="h-16 bg-white border-b border-slate-200/80 flex items-center justify-between px-6 shrink-0">
+      <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-100 flex items-center justify-between px-6 shrink-0">
         {/* Left — Breadcrumb / Search trigger */}
         <button
           onClick={() => { setShowSearch(true); setTimeout(() => inputRef.current?.focus(), 50); }}

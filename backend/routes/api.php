@@ -10,14 +10,23 @@ use App\Http\Controllers\Api\MonthLockController;
 use App\Http\Controllers\Api\OrderImportController;
 use App\Http\Controllers\Api\ChecklistController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\HealthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\RateLimiter;
 
+// ── Health Check (no auth required) ──
+Route::get('/health', [HealthController::class, 'check']);
+Route::get('/ping', [HealthController::class, 'ping']);
+
 // ── Rate limiting ──
 RateLimiter::for('login', function (Request $request) {
     return Limit::perMinute(5)->by($request->ip());
+});
+
+RateLimiter::for('api', function (Request $request) {
+    return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
 });
 
 // ── Public: Auth ──
@@ -25,7 +34,7 @@ Route::post('/auth/login', [AuthController::class, 'login'])
     ->middleware('throttle:login');
 
 // ── Authenticated routes ──
-Route::middleware(['auth:sanctum', 'single.session'])->group(function () {
+Route::middleware(['auth:sanctum', 'single.session', 'throttle:api'])->group(function () {
 
     // ── Auth ──
     Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -52,6 +61,18 @@ Route::middleware(['auth:sanctum', 'single.session'])->group(function () {
 
         // My stats
         Route::get('/my-stats', [WorkflowController::class, 'myStats']);
+        
+        // My queue (drawer order list)
+        Route::get('/my-queue', [WorkflowController::class, 'myQueue']);
+        
+        // My completed orders today
+        Route::get('/my-completed', [WorkflowController::class, 'myCompleted']);
+        
+        // My order history (all time)
+        Route::get('/my-history', [WorkflowController::class, 'myHistory']);
+        
+        // My performance stats
+        Route::get('/my-performance', [WorkflowController::class, 'myPerformance']);
 
         // Submit completed work
         Route::post('/orders/{id}/submit', [WorkflowController::class, 'submitWork']);
@@ -62,6 +83,22 @@ Route::middleware(['auth:sanctum', 'single.session'])->group(function () {
         // Hold/Resume
         Route::post('/orders/{id}/hold', [WorkflowController::class, 'holdOrder']);
         Route::post('/orders/{id}/resume', [WorkflowController::class, 'resumeOrder']);
+        
+        // Reassign to queue (worker releases order)
+        Route::post('/orders/{id}/reassign-queue', [WorkflowController::class, 'reassignToQueue']);
+        
+        // Flag issue
+        Route::post('/orders/{id}/flag-issue', [WorkflowController::class, 'flagIssue']);
+        
+        // Request help/clarification
+        Route::post('/orders/{id}/request-help', [WorkflowController::class, 'requestHelp']);
+        
+        // Timer controls
+        Route::post('/orders/{id}/timer/start', [WorkflowController::class, 'startTimer']);
+        Route::post('/orders/{id}/timer/stop', [WorkflowController::class, 'stopTimer']);
+        
+        // Full order details (with notes, attachments, flags, help requests)
+        Route::get('/orders/{id}/full-details', [WorkflowController::class, 'orderFullDetails']);
 
         // Order details (role-filtered)
         Route::get('/orders/{id}', [WorkflowController::class, 'orderDetails']);
@@ -82,6 +119,9 @@ Route::middleware(['auth:sanctum', 'single.session'])->group(function () {
     Route::get('/dashboard/operations', [DashboardController::class, 'operations']);
     Route::get('/dashboard/worker', [DashboardController::class, 'worker']);
     Route::get('/dashboard/absentees', [DashboardController::class, 'absentees']);
+    
+    // Daily operations - rate limited separately to protect DB
+    Route::middleware('throttle:10,1')->get('/dashboard/daily-operations', [DashboardController::class, 'dailyOperations']);
 
     // ═══════════════════════════════════════════
     // MANAGEMENT ROUTES (ops_manager, director, ceo)
