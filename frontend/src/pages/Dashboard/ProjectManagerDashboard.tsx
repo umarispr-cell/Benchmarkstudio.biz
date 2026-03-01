@@ -257,6 +257,7 @@ export default function ProjectManagerDashboard() {
                   <tr className="bg-slate-50/80">
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Name</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Role</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Team</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Status</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Assigned</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Completed</th>
@@ -284,6 +285,9 @@ export default function ProjectManagerDashboard() {
                             <RoleIcon className="h-3 w-3" />
                             {staff.role}
                           </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs text-slate-600">{(staff as any).team_name || '—'}</span>
                         </td>
                         <td className="px-4 py-3 text-center">
                           {staff.is_absent ? (

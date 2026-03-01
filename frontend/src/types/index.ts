@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════
 
 export const FP_STATES = [
-  'RECEIVED', 'QUEUED_DRAW', 'IN_DRAW', 'SUBMITTED_DRAW',
+  'RECEIVED', 'PENDING_QA_REVIEW', 'QUEUED_DRAW', 'IN_DRAW', 'SUBMITTED_DRAW',
   'QUEUED_CHECK', 'IN_CHECK', 'REJECTED_BY_CHECK', 'SUBMITTED_CHECK',
   'QUEUED_QA', 'IN_QA', 'REJECTED_BY_QA', 'APPROVED_QA',
   'DELIVERED', 'ON_HOLD', 'CANCELLED',
@@ -24,11 +24,12 @@ export type InvoiceStatus = typeof INVOICE_STATUSES[number];
 export const REJECTION_CODES = ['quality', 'incomplete', 'wrong_specs', 'rework', 'formatting', 'missing_info'] as const;
 export type RejectionCode = typeof REJECTION_CODES[number];
 
-export const ROLES = ['ceo', 'director', 'operations_manager', 'qa', 'checker', 'drawer', 'designer', 'admin', 'accounts_manager'] as const;
+export const ROLES = ['ceo', 'director', 'operations_manager', 'project_manager', 'qa', 'checker', 'drawer', 'designer', 'admin', 'accounts_manager', 'live_qa'] as const;
 export type UserRole = typeof ROLES[number];
 
 export const PRODUCTION_ROLES: UserRole[] = ['drawer', 'checker', 'qa', 'designer'];
-export const MANAGEMENT_ROLES: UserRole[] = ['ceo', 'director', 'operations_manager', 'admin'];
+export const MANAGEMENT_ROLES: UserRole[] = ['ceo', 'director', 'operations_manager', 'project_manager', 'admin'];
+export const QA_OVERSIGHT_ROLES: UserRole[] = ['live_qa', 'ceo', 'director'];
 
 // ═══════════════════════════════════════════
 // CORE ENTITIES
@@ -46,11 +47,17 @@ export interface User {
   layer: string | null;
   is_active: boolean;
   is_absent: boolean;
+  is_online: boolean;
   last_activity: string | null;
   inactive_days: number;
   wip_count: number;
+  wip_limit: number;
   today_completed: number;
   daily_target: number;
+  avg_completion_minutes: number;
+  rejection_rate_30d: number;
+  assignment_score: number;
+  skills: string[] | null;
   shift_start: string | null;
   shift_end: string | null;
   project?: Project;
@@ -115,6 +122,7 @@ export interface ProjectInput {
 export interface Team {
   id: number;
   project_id: number;
+  qa_user_id: number | null;
   name: string;
   qa_count: number;
   checker_count: number;
@@ -123,6 +131,9 @@ export interface Team {
   is_active: boolean;
   structure_config: Record<string, unknown> | null;
   auto_assignment_rules: Record<string, unknown> | null;
+  // Relationships
+  qa_lead?: User;
+  project?: Project;
 }
 
 export interface Order {
@@ -135,13 +146,18 @@ export interface Order {
   workflow_state: WorkflowState;
   workflow_type: WorkflowType;
   assigned_to: number | null;
+  qa_supervisor_id: number | null;
   team_id: number | null;
   priority: 'low' | 'normal' | 'high' | 'urgent';
+  complexity_weight: number;
+  estimated_minutes: number | null;
+  order_type: string;
   received_at: string;
   started_at: string | null;
   completed_at: string | null;
   delivered_at: string | null;
   due_date: string | null;
+  due_in: string | null;
   metadata: Record<string, unknown> | null;
   recheck_count: number;
   attempt_draw: number;
@@ -158,6 +174,7 @@ export interface Order {
   project?: Project;
   team?: Team;
   assignedUser?: User;
+  qaSupervisor?: User;
   work_items?: WorkItem[];
 }
 
@@ -242,6 +259,21 @@ export interface InvoiceInput {
 export interface MasterDashboard {
   org_totals: OrgTotals;
   countries: CountryDashboard[];
+  teams: TeamOutput[];
+}
+
+export interface TeamOutput {
+  id: number;
+  name: string;
+  project_code: string;
+  project_name: string;
+  country: string;
+  department: string;
+  staff_count: number;
+  active_staff: number;
+  delivered_today: number;
+  pending: number;
+  efficiency: number;
 }
 
 export interface OrgTotals {
@@ -352,17 +384,41 @@ export interface OpsDashboardData {
     delivered: number;
     by_role: Record<string, number>;
   }>;
-  absentees?: Array<{ id: number; name: string; role: string; reassigned_count?: number }>;
+  absentees?: Array<{ id: number; name: string; role: string; project_name?: string }>;
+  team_performance?: Array<{
+    id: number;
+    name: string;
+    project_code: string;
+    qa_lead: string;
+    staff_count: number;
+    active_staff: number;
+    absent_staff: number;
+    delivered_today: number;
+    pending: number;
+    today_completed: number;
+    efficiency: number;
+  }>;
   workers?: Array<{
     id: number;
     name: string;
     email: string;
     role: string;
+    project_id?: number | null;
     is_active: boolean;
     is_absent: boolean;
+    is_online: boolean;
     wip_count: number;
     today_completed: number;
+    assigned_work?: number;
+    pending_work?: number;
+    assignment_score: number;
     last_activity: string | null;
+  }>;
+  project_managers?: Array<{
+    id: number;
+    name: string;
+    email: string;
+    projects: Array<{ id: number; code: string; name: string }>;
   }>;
 }
 
@@ -395,6 +451,69 @@ export interface QueueHealth {
   sla_breaches: number;
   total_pending: number;
   total_delivered: number;
+}
+
+// ═══════════════════════════════════════════
+// PROJECT MANAGER DASHBOARD
+// ═══════════════════════════════════════════
+
+export interface PMDashboardData {
+  projects: Array<{
+    project: Pick<Project, 'id' | 'code' | 'name' | 'country' | 'department' | 'workflow_type'>;
+    total_orders: number;
+    pending: number;
+    delivered_today: number;
+    in_progress: number;
+    total_staff: number;
+    active_staff: number;
+    queue_stages: Record<string, number>;
+  }>;
+  totals: {
+    total_orders: number;
+    pending: number;
+    delivered_today: number;
+    in_progress: number;
+    received_today: number;
+  };
+  staff_report: Array<{
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+    project_id: number | null;
+    project_name?: string;
+    team_id?: number | null;
+    team_name?: string;
+    is_online: boolean;
+    is_absent: boolean;
+    assigned_work: number;
+    completed_today: number;
+    pending_work: number;
+    wip_count: number;
+    assignment_score: number;
+  }>;
+  order_queue: Array<{
+    id: number;
+    order_number: string;
+    project_id: number;
+    workflow_state: string;
+    priority: string;
+    received_at: string;
+    client_reference: string | null;
+  }>;
+  team_performance: Array<{
+    id: number;
+    name: string;
+    project_code: string;
+    qa_lead: string;
+    staff_count: number;
+    active_staff: number;
+    today_completed: number;
+    delivered_today: number;
+    pending: number;
+    efficiency: number;
+  }>;
+  department_roles: string[];
 }
 
 // ═══════════════════════════════════════════
@@ -457,6 +576,112 @@ export interface DailyOperationsData {
   totals: DailyOperationsTotals;
   by_country: DailyOperationsCountry[];
   projects: DailyOperationsProject[];
+}
+
+// ═══════════════════════════════════════════
+// ASSIGNMENT DASHBOARD (Supervisor/PM View)
+// ═══════════════════════════════════════════
+
+export interface AssignmentWorker {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  team_id: number | null;
+  project_id: number | null;
+  is_active: boolean;
+  is_absent: boolean;
+  is_online: boolean;
+  wip_count: number;
+  today_completed: number;
+}
+
+export interface QueueProject {
+  id: number;
+  code: string;
+  name: string;
+  country: string;
+  department: string;
+  workflow_type: string;
+}
+
+export interface QueueInfo {
+  queue_name: string;
+  projects: QueueProject[];
+  department: string;
+  country: string;
+  workflow_type: string;
+}
+
+export interface AssignmentOrder {
+  id: number;
+  order_number: string;
+  project_id: number;
+  client_reference: string | null;
+  address: string | null;
+  client_name: string | null;
+  workflow_state: string;
+  priority: string;
+  assigned_to: number | null;
+  drawer_id: number | null;
+  drawer_name: string | null;
+  checker_id: number | null;
+  checker_name: string | null;
+  qa_id: number | null;
+  qa_name: string | null;
+  dassign_time: string | null;
+  cassign_time: string | null;
+  drawer_done: string | null;
+  checker_done: string | null;
+  final_upload: string | null;
+  drawer_date: string | null;
+  checker_date: string | null;
+  ausFinaldate: string | null;
+  amend: string | null;
+  recheck_count: number;
+  is_on_hold: boolean;
+  due_in: string | null;
+  due_date: string | null;
+  received_at: string | null;
+  delivered_at: string | null;
+  created_at: string | null;
+}
+
+export interface AssignmentDateStat {
+  date: string;
+  label: string;
+  day_label: string;
+  high: number;
+  regular: number;
+  total: number;
+  drawer_done: number;
+  checker_done: number;
+  qa_done: number;
+  amender_done: number;
+  delivered: number;
+}
+
+export interface AssignmentRoleCompletion {
+  total_staff: number;
+  active: number;
+  today_completed: number;
+}
+
+export interface AssignmentDashboardData {
+  queue: QueueInfo;
+  project: Pick<Project, 'id' | 'code' | 'name' | 'country' | 'department' | 'workflow_type'>;
+  workers: Record<string, AssignmentWorker[]>;
+  orders: PaginatedResponse<AssignmentOrder>;
+  counts: {
+    today_total: number;
+    pending: number;
+    completed: number;
+    amends: number;
+    assigned: number;
+    unassigned: number;
+  };
+  date_stats: AssignmentDateStat[];
+  role_completions: Record<string, AssignmentRoleCompletion>;
 }
 
 // ═══════════════════════════════════════════
