@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/store';
 import { dashboardService } from '../../services';
 import type { MasterDashboard } from '../../types';
-import { AnimatedPage, PageHeader, StatCard } from '../../components/ui';
+import { AnimatedPage, PageHeader, StatCard, CEODashboardSkeleton } from '../../components/ui';
 import { Users, Package, TrendingUp, AlertTriangle, Layers, Globe, ChevronRight, ChevronDown, Calendar, LayoutDashboard, Clock, Target, Activity, UsersRound, UserX } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import DailyOperationsView from './DailyOperationsView';
@@ -42,19 +42,7 @@ export default function CEODashboard() {
 
   if (loading && activeTab === 'overview') return (
     <AnimatedPage>
-      <div className="space-y-8">
-        <div className="space-y-2">
-          <div className="h-8 w-64 bg-slate-100 animate-pulse rounded-lg" />
-          <div className="h-4 w-96 bg-slate-100 animate-pulse rounded" />
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-28 bg-slate-100 animate-pulse rounded-xl" />)}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-          <div className="lg:col-span-3 h-72 bg-slate-100 animate-pulse rounded-xl" />
-          <div className="lg:col-span-2 h-72 bg-slate-100 animate-pulse rounded-xl" />
-        </div>
-      </div>
+      <CEODashboardSkeleton />
     </AnimatedPage>
   );
 

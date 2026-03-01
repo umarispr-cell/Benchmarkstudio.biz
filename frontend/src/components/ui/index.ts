@@ -10,5 +10,17 @@ export { default as Button } from './Button';
 export { default as CommandPalette } from './CommandPalette';
 export { default as SlideOver } from './SlideOver';
 export { Skeleton, SkeletonTableRow } from './Skeleton';
+export {
+  CEODashboardSkeleton,
+  OpsManagerDashboardSkeleton,
+  PMDashboardSkeleton,
+  WorkerDashboardSkeleton,
+  AccountsDashboardSkeleton,
+  LiveQATableSkeleton,
+  LiveQAStatsSkeleton,
+  DailyOpsSkeleton,
+  SkeletonStatCard,
+  SkeletonTable,
+} from './DashboardSkeletons';
 export { ToastProvider, useToast } from './Toast';
 export { Input, Textarea, Select } from './FormField';

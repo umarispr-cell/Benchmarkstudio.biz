@@ -1,13 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSelector } from 'react-redux';
+import type { RootState } from '../../store/store';
 import { workflowService, dashboardService } from '../../services';
+import { useSmartPolling } from '../../hooks/useSmartPolling';
 import type { Order, WorkerDashboardData } from '../../types';
 import { REJECTION_CODES } from '../../types';
-import { AnimatedPage, PageHeader, StatCard, StatusBadge, Modal, Button, Select, Textarea } from '../../components/ui';
-import { Play, Send, X, Clock, Target, Inbox, CheckCircle, History, BarChart3, TrendingUp, Loader2, ClipboardList, Pencil, Eye, Palette, Info } from 'lucide-react';
+import { AnimatedPage, PageHeader, StatCard, StatusBadge, Modal, Button, Select, Textarea, WorkerDashboardSkeleton } from '../../components/ui';
+import { Play, X, Clock, Target, Inbox, CheckCircle, History, BarChart3, TrendingUp, Loader2, ClipboardList, Pencil, Eye, Palette, Info } from 'lucide-react';
 import { motion } from 'framer-motion';
 import DrawerWorkForm from '../../components/DrawerWorkForm';
 import CheckerWorkForm from '../../components/CheckerWorkForm';
+import QAWorkForm from '../../components/QAWorkForm';
+import DesignerWorkForm from '../../components/DesignerWorkForm';
 
 interface PerformanceStats {
   today_completed: number;
@@ -21,40 +25,35 @@ interface PerformanceStats {
 }
 
 // Role-specific labels and icons
-const ROLE_CONFIG: Record<string, { label: string; icon: any; color: string; description: string }> = {
+const ROLE_CONFIG: Record<string, { label: string; icon: any; description: string }> = {
   drawer: { 
     label: 'Drawing Station', 
     icon: Pencil, 
-    color: 'blue',
     description: 'Create floor plans following specifications'
   },
   checker: { 
     label: 'Checking Station', 
     icon: ClipboardList, 
-    color: 'violet',
     description: 'Verify accuracy and document corrections'
   },
   qa: { 
     label: 'QA Station', 
     icon: Eye, 
-    color: 'emerald',
     description: 'Final quality check against client standards'
   },
   designer: { 
     label: 'Design Station', 
     icon: Palette, 
-    color: 'pink',
     description: 'Enhance photos per design specifications'
   },
 };
 
 export default function WorkerDashboard() {
-  const user = useSelector((state: any) => state.auth.user);
+  const user = useSelector((state: RootState) => state.auth.user);
   const [data, setData] = useState<WorkerDashboardData | null>(null);
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [submitComment, setSubmitComment] = useState('');
   const [showReject, setShowReject] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectCode, setRejectCode] = useState('');
@@ -73,15 +72,59 @@ export default function WorkerDashboard() {
   // Auto-assignment state
   const [autoAssigning, setAutoAssigning] = useState(false);
   
+  // Order started state (controls order ID visibility)
+  const [orderStarted, setOrderStarted] = useState(false);
+  const [startingOrder, setStartingOrder] = useState(false);
+  
   // Forms
   const [showDrawerForm, setShowDrawerForm] = useState(false);
   const [showCheckerForm, setShowCheckerForm] = useState(false);
+  const [showQAForm, setShowQAForm] = useState(false);
+  const [showDesignerForm, setShowDesignerForm] = useState(false);
   
   // Role helpers
-  const roleConfig = ROLE_CONFIG[user?.role] || ROLE_CONFIG.drawer;
-  const isDrawer = user?.role === 'drawer' || user?.role === 'designer';
+  const roleConfig = ROLE_CONFIG[user?.role ?? 'drawer'] || ROLE_CONFIG.drawer;
+  const isDrawer = user?.role === 'drawer';
+  const isDesigner = user?.role === 'designer';
   const isChecker = user?.role === 'checker';
   const isQA = user?.role === 'qa';
+
+  /* ── Countdown tick (every 30s) ── */
+  const [, setCountdownTick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => setCountdownTick(t => t + 1), 30_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  /** Parse due_in "MM/DD/YYYY HH:MM:SS" or ISO → ms remaining.
+   *  Fallback: if due_in is empty, use received_at + 24h as default deadline. */
+  const parseDueIn = (raw: string | null | undefined, receivedAt?: string | null): number | null => {
+    if (raw) {
+      let d = new Date(raw);
+      if (isNaN(d.getTime())) {
+        const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+        if (m) d = new Date(+m[3], +m[1] - 1, +m[2], +m[4], +m[5], +m[6]);
+      }
+      if (!isNaN(d.getTime())) return d.getTime() - Date.now();
+    }
+    // Fallback: received_at + 24 hours
+    if (receivedAt) {
+      const rd = new Date(receivedAt);
+      if (!isNaN(rd.getTime())) return rd.getTime() + 24 * 3600_000 - Date.now();
+    }
+    return null;
+  };
+
+  const fmtCountdown = (ms: number) => {
+    const overdue = ms < 0;
+    const absTotalMin = Math.floor(Math.abs(ms) / 60000);
+    const hrs = Math.floor(absTotalMin / 60);
+    const mins = absTotalMin % 60;
+    const label = overdue
+      ? (hrs > 0 ? `-${hrs}h ${mins}m` : `-${mins}m`)
+      : (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`);
+    return { label, overdue, hrs };
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -91,6 +134,22 @@ export default function WorkerDashboard() {
       ]);
       setData(dashRes.data);
       setCurrentOrder(currentRes.data.order);
+      
+      // Determine if order is already started (timer running or time spent)
+      if (currentRes.data.order) {
+        try {
+          const detailsRes = await workflowService.orderFullDetails(currentRes.data.order.id);
+          if (detailsRes.data.timer_running || detailsRes.data.current_time_seconds > 0) {
+            setOrderStarted(true);
+          }
+        } catch {
+          // If we can check IN_* state, consider it started
+          const ws = currentRes.data.order.workflow_state || '';
+          if (ws.startsWith('IN_')) setOrderStarted(true);
+        }
+      } else {
+        setOrderStarted(false);
+      }
       
       // Load completed orders and performance stats (no manual queue!)
       try {
@@ -116,7 +175,14 @@ export default function WorkerDashboard() {
     } catch (e) { console.error(e); }
   }, []);
 
-  useEffect(() => { loadData(); const i = setInterval(loadData, 15000); return () => clearInterval(i); }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
+
+  /* ── Smart Polling: only reload when data actually changes ── */
+  useSmartPolling({
+    scope: 'all',
+    interval: 10_000,
+    onDataChanged: loadData,
+  });
   
   useEffect(() => {
     if (viewMode === 'history' && historyOrders.length === 0) {
@@ -131,26 +197,36 @@ export default function WorkerDashboard() {
       const res = await workflowService.startNext();
       if (res.data.order) { 
         setCurrentOrder(res.data.order);
-        // Open the appropriate work form immediately
-        if (isDrawer) {
-          setShowDrawerForm(true);
-        } else if (isChecker) {
-          setShowCheckerForm(true);
-        }
+        setOrderStarted(false); // Order ID hidden until Start is clicked
         loadData();
       }
     } catch (e) { console.error(e); }
     finally { setAutoAssigning(false); }
   };
 
-  const handleSubmit = async () => {
+  // Start order: starts timer, reveals order ID, opens work form
+  const handleStartOrder = async () => {
     if (!currentOrder) return;
-    setSubmitting(true);
+    setStartingOrder(true);
     try {
-      await workflowService.submitWork(currentOrder.id, submitComment);
-      setSubmitComment(''); setCurrentOrder(null); setShowDrawerForm(false); setShowCheckerForm(false); loadData();
-    } catch (e) { console.error(e); }
-    finally { setSubmitting(false); }
+      await workflowService.startTimer(currentOrder.id);
+      setOrderStarted(true);
+      // Open the appropriate work form
+      if (isDrawer) setShowDrawerForm(true);
+      else if (isChecker) setShowCheckerForm(true);
+      else if (isQA) setShowQAForm(true);
+      else if (isDesigner) setShowDesignerForm(true);
+    } catch (e: any) {
+      console.error(e);
+      // If timer start fails, still allow opening the form
+      setOrderStarted(true);
+      if (isDrawer) setShowDrawerForm(true);
+      else if (isChecker) setShowCheckerForm(true);
+      else if (isQA) setShowQAForm(true);
+      else if (isDesigner) setShowDesignerForm(true);
+    } finally {
+      setStartingOrder(false);
+    }
   };
 
   const handleReject = async () => {
@@ -159,7 +235,7 @@ export default function WorkerDashboard() {
     try {
       await workflowService.rejectOrder(currentOrder.id, rejectReason, rejectCode, routeTo || undefined);
       setShowReject(false); setRejectReason(''); setRejectCode(''); setRouteTo('');
-      setCurrentOrder(null); loadData();
+      setCurrentOrder(null); setShowDrawerForm(false); setShowCheckerForm(false); setShowQAForm(false); setShowDesignerForm(false); loadData();
     } catch (e) { console.error(e); }
     finally { setSubmitting(false); }
   };
@@ -169,20 +245,18 @@ export default function WorkerDashboard() {
     setSubmitting(true);
     try {
       await workflowService.holdOrder(currentOrder.id, holdReason);
-      setShowHold(false); setHoldReason(''); setCurrentOrder(null); loadData();
+      setShowHold(false); setHoldReason(''); setCurrentOrder(null); setShowDrawerForm(false); setShowCheckerForm(false); setShowQAForm(false); setShowDesignerForm(false); loadData();
     } catch (e) { console.error(e); }
     finally { setSubmitting(false); }
   };
 
   const canReject = user?.role === 'checker' || user?.role === 'qa';
-  const canHold = ['checker', 'qa', 'operations_manager'].includes(user?.role);
+  const canHold = ['drawer', 'checker', 'qa', 'designer'].includes(user?.role ?? '');
 
   if (loading) return (
-    <div className="space-y-6">
-      <div className="h-8 w-48 bg-slate-100 animate-pulse rounded-lg" />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-24 bg-slate-100 animate-pulse rounded-xl" />)}</div>
-      <div className="h-56 bg-slate-100 animate-pulse rounded-xl" />
-    </div>
+    <AnimatedPage>
+      <WorkerDashboardSkeleton />
+    </AnimatedPage>
   );
 
   const progress = data?.daily_target ? Math.min(100, Math.round(((data?.today_completed ?? 0) / data.daily_target) * 100)) : 0;
@@ -385,6 +459,17 @@ export default function WorkerDashboard() {
       </div>
 
       {/* Performance Stats View */}
+      {viewMode === 'stats' && !performanceStats && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-24 bg-slate-100 animate-pulse rounded-xl" />)}
+          </div>
+          <div className="h-40 bg-slate-100 animate-pulse rounded-xl" />
+          <div className="h-40 bg-slate-100 animate-pulse rounded-xl" />
+        </div>
+      )}
+
+      {/* Performance Stats View */}
       {viewMode === 'stats' && performanceStats && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -461,7 +546,7 @@ export default function WorkerDashboard() {
                       <div className="text-sm font-medium text-slate-900">{order.order_number}</div>
                       <div className="text-xs text-slate-500">{metadata.address || order.client_reference || '—'}</div>
                     </div>
-                    <StatusBadge status="DELIVERED" size="sm" />
+                    <StatusBadge status={order.workflow_state || 'completed'} size="sm" />
                   </div>
                 );
               })}
@@ -538,8 +623,8 @@ export default function WorkerDashboard() {
           {/* Current Order or Get Next */}
           {currentOrder ? (
             <>
-              {/* Role-specific instructions panel */}
-              {renderRoleInstructions()}
+              {/* Role-specific instructions panel - only show after started */}
+              {orderStarted && renderRoleInstructions()}
               
               {/* Current Order Card */}
               <motion.div
@@ -550,58 +635,98 @@ export default function WorkerDashboard() {
                 <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-900">Current Order</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Complete this before getting a new one</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {orderStarted ? 'Complete this before getting a new one' : 'Click Start to begin working'}
+                    </p>
                   </div>
-                  <StatusBadge status={currentOrder.workflow_state} />
+                  <div className="flex items-center gap-2">
+                    {!orderStarted && (
+                      <Button
+                        size="lg"
+                        onClick={handleStartOrder}
+                        loading={startingOrder}
+                        icon={<Play className="h-5 w-5" />}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 text-base font-bold shadow-lg animate-pulse"
+                      >
+                        Start
+                      </Button>
+                    )}
+                    <StatusBadge status={currentOrder.workflow_state} />
+                  </div>
                 </div>
                 <div className="p-5">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
-                    <div>
-                      <div className="text-xs text-slate-400 mb-1">Order #</div>
-                      <div className="text-sm font-semibold text-slate-900">{currentOrder.order_number}</div>
-                    </div>
+                    {orderStarted ? (
+                      <div>
+                        <div className="text-xs text-slate-400 mb-1">Order #</div>
+                        <div className="text-sm font-semibold text-slate-900">{currentOrder.order_number}</div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="text-xs text-slate-400 mb-1">Order #</div>
+                        <div className="text-sm font-semibold text-slate-400">••••••</div>
+                      </div>
+                    )}
                     <div>
                       <div className="text-xs text-slate-400 mb-1">Priority</div>
                       <StatusBadge status={currentOrder.priority} />
                     </div>
                     <div>
-                      <div className="text-xs text-slate-400 mb-1">Client Ref</div>
-                      <div className="text-sm font-medium text-slate-700">{currentOrder.client_reference || '—'}</div>
+                      <div className="text-xs text-slate-400 mb-1">Address</div>
+                      <div className="text-sm font-medium text-slate-700 truncate" title={orderStarted ? ((currentOrder as any).address || '—') : '••••••'}>{orderStarted ? ((currentOrder as any).address || '—') : '••••••'}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-slate-400 mb-1">Due</div>
-                      <div className="text-sm font-medium text-slate-700">{currentOrder.due_date ? new Date(currentOrder.due_date).toLocaleDateString() : '—'}</div>
+                      <div className="text-xs text-slate-400 mb-1">Due In</div>
+                      {(() => {
+                        const ms = parseDueIn((currentOrder as any).due_in, currentOrder.received_at);
+                        if (ms === null) return <div className="text-sm font-medium text-slate-400">—</div>;
+                        const { label, overdue, hrs } = fmtCountdown(ms);
+                        const cls = overdue ? 'text-red-600' : hrs < 1 ? 'text-orange-600' : hrs < 4 ? 'text-yellow-600' : 'text-green-600';
+                        return (
+                          <div className={`text-sm font-bold flex items-center gap-1 ${cls}`}>
+                            <Clock className="w-3.5 h-3.5" />
+                            {label}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
-                  {/* Open work form button */}
-                  <div className="flex items-center gap-2">
-                    {isDrawer && (
-                      <Button onClick={() => setShowDrawerForm(true)} icon={<Pencil className="h-4 w-4" />}>
-                        Open Work Form
-                      </Button>
-                    )}
-                    {isChecker && (
-                      <Button onClick={() => setShowCheckerForm(true)} icon={<ClipboardList className="h-4 w-4" />} className="bg-brand-500 hover:bg-brand-600">
-                        Open Check Form
-                      </Button>
-                    )}
-                    {isQA && (
-                      <Button onClick={handleSubmit} loading={submitting} icon={<Send className="h-4 w-4" />} className="bg-brand-500 hover:bg-brand-600">
-                        Approve & Deliver
-                      </Button>
-                    )}
-                    {canReject && (
-                      <Button variant="danger" onClick={() => setShowReject(true)} icon={<X className="h-4 w-4" />}>
-                        Reject
-                      </Button>
-                    )}
-                    {canHold && (
-                      <Button variant="secondary" onClick={() => setShowHold(true)} icon={<Clock className="h-4 w-4" />}>
-                        Hold
-                      </Button>
-                    )}
-                  </div>
+                  {/* Action buttons - only show after start */}
+                  {orderStarted && (
+                    <div className="flex items-center gap-2">
+                      {isDrawer && (
+                        <Button onClick={() => setShowDrawerForm(true)} icon={<Pencil className="h-4 w-4" />}>
+                          Open Work Form
+                        </Button>
+                      )}
+                      {isChecker && (
+                        <Button onClick={() => setShowCheckerForm(true)} icon={<ClipboardList className="h-4 w-4" />} className="bg-brand-500 hover:bg-brand-600">
+                          Open Check Form
+                        </Button>
+                      )}
+                      {isQA && (
+                        <Button onClick={() => setShowQAForm(true)} icon={<Eye className="h-4 w-4" />} className="bg-emerald-600 hover:bg-emerald-700">
+                          Open QA Review
+                        </Button>
+                      )}
+                      {isDesigner && (
+                        <Button onClick={() => setShowDesignerForm(true)} icon={<Palette className="h-4 w-4" />} className="bg-pink-600 hover:bg-pink-700">
+                          Open Design Form
+                        </Button>
+                      )}
+                      {canReject && (
+                        <Button variant="danger" onClick={() => setShowReject(true)} icon={<X className="h-4 w-4" />}>
+                          Reject
+                        </Button>
+                      )}
+                      {canHold && (
+                        <Button variant="secondary" onClick={() => setShowHold(true)} icon={<Clock className="h-4 w-4" />}>
+                          Hold
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </motion.div>
             </>
@@ -631,7 +756,10 @@ export default function WorkerDashboard() {
                 {data?.queue_count === 0 ? 'Queue Empty' : 'Get Next Order'}
               </Button>
               {data?.queue_count === 0 && (
-                <p className="text-xs text-slate-400 mt-3">No orders available in your queue right now</p>
+                <div className="mt-4 text-center">
+                  <p className="text-xs text-slate-400">No orders available right now</p>
+                  <p className="text-xs text-slate-300 mt-1">Auto-checking every 15 seconds...</p>
+                </div>
               )}
             </motion.div>
           )}
@@ -658,6 +786,32 @@ export default function WorkerDashboard() {
           onClose={() => setShowCheckerForm(false)}
           onComplete={() => {
             setShowCheckerForm(false);
+            setCurrentOrder(null);
+            loadData();
+          }}
+        />
+      )}
+
+      {/* QA Work Form Modal */}
+      {currentOrder && showQAForm && (
+        <QAWorkForm
+          order={currentOrder}
+          onClose={() => setShowQAForm(false)}
+          onComplete={() => {
+            setShowQAForm(false);
+            setCurrentOrder(null);
+            loadData();
+          }}
+        />
+      )}
+
+      {/* Designer Work Form Modal */}
+      {currentOrder && showDesignerForm && (
+        <DesignerWorkForm
+          order={currentOrder}
+          onClose={() => setShowDesignerForm(false)}
+          onComplete={() => {
+            setShowDesignerForm(false);
             setCurrentOrder(null);
             loadData();
           }}
