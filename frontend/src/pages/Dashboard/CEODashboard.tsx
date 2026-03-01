@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../../store/store';
 import { dashboardService } from '../../services';
 import type { MasterDashboard } from '../../types';
 import { AnimatedPage, PageHeader, StatCard } from '../../components/ui';
-import { Users, Package, TrendingUp, AlertTriangle, Layers, Globe, ChevronRight, ChevronDown, ArrowRight, Calendar, LayoutDashboard, Clock, Target, Activity } from 'lucide-react';
+import { Users, Package, TrendingUp, AlertTriangle, Layers, Globe, ChevronRight, ChevronDown, Calendar, LayoutDashboard, Clock, Target, Activity, UsersRound, UserX } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import DailyOperationsView from './DailyOperationsView';
 
@@ -11,15 +13,17 @@ const COLORS = ['#2AA7A0', '#C45C26', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899'
 type TabType = 'overview' | 'daily-operations';
 
 export default function CEODashboard() {
+  const { user } = useSelector((state: RootState) => state.auth);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [data, setData] = useState<MasterDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedCountry, setExpandedCountry] = useState<string | null>(null);
   const [expandedDept, setExpandedDept] = useState<string | null>(null);
+  const [showAllTeams, setShowAllTeams] = useState(false);
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 30000);
+    const interval = setInterval(loadData, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -73,13 +77,14 @@ export default function CEODashboard() {
     fill: COLORS[i % COLORS.length],
   })).filter(c => c.value > 0) || [];
 
-  const efficiency = org && org.orders_received_month > 0
+  const rawEfficiency = org && org.orders_received_month > 0
     ? Math.round((org.orders_delivered_month / org.orders_received_month) * 100) : 0;
+  const efficiency = Math.min(rawEfficiency, 100);
 
   return (
     <AnimatedPage>
       <PageHeader
-        title="Master Dashboard"
+        title={user?.role === 'director' ? 'Director Dashboard' : 'CEO Dashboard'}
         subtitle="Organization overview across all countries and departments"
         badge={
           <span className="flex items-center gap-1.5 text-xs font-medium text-brand-700 bg-brand-50 px-3 py-1.5 rounded-full ring-1 ring-brand-200">
@@ -120,8 +125,19 @@ export default function CEODashboard() {
         <StatCard label="Received Today" value={org.orders_received_today} icon={Package} color="blue" />
         <StatCard label="Delivered Today" value={org.orders_delivered_today} icon={TrendingUp} color="green" />
         <StatCard label="Total Pending" value={org.total_pending} icon={Layers} color={org.total_pending > 20 ? 'amber' : 'slate'} />
-        <StatCard label="Efficiency" value={`${efficiency}%`} subtitle="This month" icon={TrendingUp} color="brand" />
+        <StatCard label="Efficiency" value={`${efficiency}%`} subtitle={rawEfficiency > 100 ? `${rawEfficiency}% — clearing backlog` : 'This month'} icon={TrendingUp} color="brand" />
       </div>
+
+      {/* Inactive Staff Alert */}
+      {(org.inactive_flagged ?? 0) > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-center gap-3">
+          <UserX className="h-5 w-5 text-amber-600 flex-shrink-0" />
+          <div>
+            <span className="text-sm font-medium text-amber-800">{org.inactive_flagged} staff flagged as inactive</span>
+            <span className="text-xs text-amber-600 ml-2">(15+ days without activity)</span>
+          </div>
+        </div>
+      )}
 
       {/* Overtime & Productivity Analysis - Per CEO Requirements */}
       <div className="bg-white rounded-xl ring-1 ring-black/[0.04] p-5 mb-6">
@@ -265,6 +281,78 @@ export default function CEODashboard() {
         </div>
       </div>
 
+      {/* Team-wise Output */}
+      {data.teams && data.teams.length > 0 && (
+        <div className="bg-white rounded-xl ring-1 ring-black/[0.04] p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 mb-1">Team-wise Output</h3>
+              <p className="text-xs text-slate-500">Performance by team · Today</p>
+            </div>
+            <UsersRound className="h-4 w-4 text-slate-400" />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="text-left py-2 px-3 font-medium text-slate-600">Team</th>
+                  <th className="text-left py-2 px-3 font-medium text-slate-600">Project</th>
+                  <th className="text-left py-2 px-3 font-medium text-slate-600">Country</th>
+                  <th className="text-center py-2 px-3 font-medium text-slate-600">Staff</th>
+                  <th className="text-center py-2 px-3 font-medium text-slate-600">Active</th>
+                  <th className="text-center py-2 px-3 font-medium text-slate-600">Delivered</th>
+                  <th className="text-center py-2 px-3 font-medium text-slate-600">Pending</th>
+                  <th className="text-center py-2 px-3 font-medium text-slate-600">Efficiency</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.teams.slice(0, showAllTeams ? data.teams.length : 10).map((team) => (
+                  <tr key={team.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                    <td className="py-2.5 px-3 font-medium text-slate-900">{team.name}</td>
+                    <td className="py-2.5 px-3">
+                      <span className="font-medium text-slate-700">{team.project_code}</span>
+                      <span className="text-xs text-slate-400 ml-1">{team.project_name}</span>
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-600">{team.country}</td>
+                    <td className="py-2.5 px-3 text-center text-slate-600">{team.staff_count}</td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span className={team.active_staff === team.staff_count ? 'text-brand-600 font-medium' : 'text-amber-600'}>
+                        {team.active_staff}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span className="font-semibold text-brand-600">{team.delivered_today}</span>
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span className={team.pending > 10 ? 'text-amber-600 font-medium' : 'text-slate-600'}>{team.pending}</span>
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        team.efficiency >= 3 ? 'bg-brand-50 text-brand-700' : 
+                        team.efficiency >= 1 ? 'bg-blue-50 text-blue-700' : 
+                        'bg-slate-100 text-slate-600'
+                      }`}>
+                        {team.efficiency}/staff
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {data.teams.length > 10 && (
+              <div className="text-center mt-3">
+                <button
+                  onClick={() => setShowAllTeams(!showAllTeams)}
+                  className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+                >
+                  {showAllTeams ? 'Show top 10 only' : `Show all ${data.teams.length} teams`}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Country Drilldown */}
       <div>
         <h3 className="text-sm font-semibold text-slate-900 mb-3">Country Breakdown</h3>
@@ -327,7 +415,6 @@ export default function CEODashboard() {
                               <div className="flex items-center gap-4 text-xs">
                                 <span className="text-amber-600 font-medium">{proj.pending} pending</span>
                                 <span className="text-brand-600 font-medium">{proj.delivered_today} delivered</span>
-                                <ArrowRight className="h-3.5 w-3.5 text-slate-300" strokeWidth={2} />
                               </div>
                             </div>
                           ))}

@@ -3,26 +3,42 @@ import { useDispatch, useSelector } from 'react-redux';
 import type { RootState, AppDispatch } from '../store/store';
 import { fetchUnreadCount } from '../store/slices/notificationSlice';
 
-const POLL_INTERVAL = 15_000; // 15 seconds
+const POLL_INTERVAL = 30_000; // 30 seconds
+const MAX_CONSECUTIVE_ERRORS = 3;
 
 export function useNotificationPolling() {
   const dispatch = useDispatch<AppDispatch>();
   const isAuthenticated = useSelector((s: RootState) => !!s.auth.token);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const errorCountRef = useRef(0);
 
   useEffect(() => {
     if (!isAuthenticated) {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      errorCountRef.current = 0;
       return;
     }
 
+    const poll = async () => {
+      try {
+        await dispatch(fetchUnreadCount()).unwrap();
+        errorCountRef.current = 0; // Reset on success
+      } catch {
+        errorCountRef.current += 1;
+        // Stop polling after repeated failures to prevent redirect loops
+        if (errorCountRef.current >= MAX_CONSECUTIVE_ERRORS && intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          console.warn('Notification polling stopped after repeated failures');
+        }
+      }
+    };
+
     // Fetch immediately on mount
-    dispatch(fetchUnreadCount());
+    poll();
 
     // Poll every 15s
-    intervalRef.current = setInterval(() => {
-      dispatch(fetchUnreadCount());
-    }, POLL_INTERVAL);
+    intervalRef.current = setInterval(poll, POLL_INTERVAL);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);

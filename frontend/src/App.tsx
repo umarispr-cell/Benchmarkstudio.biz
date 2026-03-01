@@ -1,42 +1,90 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from './store/store';
 import { authService } from './services';
+import { setCredentials, logout, setLoading } from './store/slices/authSlice';
 import Login from './pages/Auth/Login';
-import Dashboard from './pages/Dashboard/Dashboard';
-import CEODashboard from './pages/Dashboard/CEODashboard';
-import OperationsManagerDashboard from './pages/Dashboard/OperationsManagerDashboard';
-import WorkerDashboard from './pages/Dashboard/WorkerDashboard';
-import ProjectManagement from './pages/Projects/ProjectManagement';
-import UserManagement from './pages/Users/UserManagement';
-import InvoiceManagement from './pages/Invoices/InvoiceManagement';
-import WorkQueue from './pages/Workflow/WorkQueue';
-import ImportOrders from './pages/Workflow/ImportOrders';
-import RejectedOrders from './pages/Workflow/RejectedOrders';
-import SupervisorAssignment from './pages/Workflow/SupervisorAssignment';
 import Layout from './components/Layout/Layout';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 
+// ─── Lazy-loaded page components (code-split per route) ───
+const Dashboard = lazy(() => import('./pages/Dashboard/Dashboard'));
+const CEODashboard = lazy(() => import('./pages/Dashboard/CEODashboard'));
+const OperationsManagerDashboard = lazy(() => import('./pages/Dashboard/OperationsManagerDashboard'));
+const ProjectManagerDashboard = lazy(() => import('./pages/Dashboard/ProjectManagerDashboard'));
+const WorkerDashboard = lazy(() => import('./pages/Dashboard/WorkerDashboard'));
+const AccountsManagerDashboard = lazy(() => import('./pages/Dashboard/AccountsManagerDashboard'));
+const ProjectManagement = lazy(() => import('./pages/Projects/ProjectManagement'));
+const UserManagement = lazy(() => import('./pages/Users/UserManagement'));
+const InvoiceManagement = lazy(() => import('./pages/Invoices/InvoiceManagement'));
+const WorkQueue = lazy(() => import('./pages/Workflow/WorkQueue'));
+const ImportOrders = lazy(() => import('./pages/Workflow/ImportOrders'));
+const RejectedOrders = lazy(() => import('./pages/Workflow/RejectedOrders'));
+const SupervisorAssignment = lazy(() => import('./pages/Workflow/SupervisorAssignment'));
+const PMAssignment = lazy(() => import('./pages/Workflow/PMAssignment'));
+const PMProjectAssignment = lazy(() => import('./pages/Management/PMProjectAssignment'));
+const OMProjectAssignment = lazy(() => import('./pages/Management/OMProjectAssignment'));
+const TransferLog = lazy(() => import('./pages/Management/TransferLog'));
+const QATeamAssignment = lazy(() => import('./pages/Workflow/QATeamAssignment'));
+const LiveQADashboard = lazy(() => import('./pages/LiveQA/LiveQADashboard'));
+
+// ─── Loading fallback for lazy routes ───
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+        <span className="text-sm text-slate-500">Loading...</span>
+      </div>
+    </div>
+  );
+}
+
+// Live QA System v2.0 — cache bust
 function App() {
-  const { isAuthenticated, user } = useSelector((state: RootState) => state.auth);
+  const dispatch = useDispatch();
+  const { isAuthenticated, user, token } = useSelector((state: RootState) => state.auth);
+  console.debug('app:v2.1');
+
+  // Restore session on page refresh: if token exists but user is not loaded,
+  // fetch the profile to re-establish authentication state
+  useEffect(() => {
+    if (token && !isAuthenticated && !user) {
+      authService.profile()
+        .then((res: any) => {
+          dispatch(setCredentials({ user: res.data, token }));
+        })
+        .catch(() => {
+          // Token is invalid/expired — clear it
+          dispatch(logout());
+        })
+        .finally(() => {
+          dispatch(setLoading(false));
+        });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Session monitoring effect
   useEffect(() => {
     if (isAuthenticated) {
+      let cancelled = false;
       // Set up session check interval (every 5 minutes)
       const sessionCheck = setInterval(async () => {
         try {
           await authService.sessionCheck();
         } catch {
-          // Session invalid, logout
-          localStorage.removeItem('token');
-          window.location.href = '/login';
+          // Session invalid — the Axios 401 interceptor already handles
+          // the redirect, so we only need to clean up here if it hasn't
+          // fired yet (e.g. network error vs 401).
+          if (!cancelled) {
+            clearInterval(sessionCheck);
+          }
         }
-      }, 5 * 60 * 1000);
+      }, 2 * 60 * 1000);
 
-      return () => clearInterval(sessionCheck);
+      return () => { cancelled = true; clearInterval(sessionCheck); };
     }
   }, [isAuthenticated]);
 
@@ -49,11 +97,17 @@ function App() {
         return <CEODashboard />;
       case 'operations_manager':
         return <OperationsManagerDashboard />;
+      case 'project_manager':
+        return <ProjectManagerDashboard />;
       case 'drawer':
       case 'checker':
       case 'qa':
       case 'designer':
         return <WorkerDashboard />;
+      case 'accounts_manager':
+        return <AccountsManagerDashboard />;
+      case 'live_qa':
+        return <LiveQADashboard />;
       default:
         return <Dashboard />;
     }
@@ -61,6 +115,7 @@ function App() {
 
   return (
     <ErrorBoundary>
+      <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/login" element={<Login />} />
         
@@ -72,13 +127,13 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={getDashboardRoute()} />
-          <Route path="dashboard" element={getDashboardRoute()} />
+          <Route index element={<Suspense fallback={<PageLoader />}>{getDashboardRoute()}</Suspense>} />
+          <Route path="dashboard" element={<Suspense fallback={<PageLoader />}>{getDashboardRoute()}</Suspense>} />
           
           <Route 
             path="projects/*" 
             element={
-              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager']}>
+              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager', 'project_manager']}>
                 <ProjectManagement />
               </ProtectedRoute>
             } 
@@ -87,7 +142,7 @@ function App() {
           <Route 
             path="users/*" 
             element={
-              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager']}>
+              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager', 'project_manager']}>
                 <UserManagement />
               </ProtectedRoute>
             } 
@@ -96,7 +151,7 @@ function App() {
           <Route 
             path="invoices/*" 
             element={
-              <ProtectedRoute allowedRoles={['ceo', 'director']}>
+              <ProtectedRoute allowedRoles={['ceo', 'director', 'accounts_manager']}>
                 <InvoiceManagement />
               </ProtectedRoute>
             } 
@@ -114,7 +169,7 @@ function App() {
           <Route 
             path="import/*" 
             element={
-              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager']}>
+              <ProtectedRoute allowedRoles={['operations_manager', 'project_manager']}>
                 <ImportOrders />
               </ProtectedRoute>
             } 
@@ -123,7 +178,7 @@ function App() {
           <Route 
             path="rejected/*" 
             element={
-              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager', 'drawer', 'checker', 'qa', 'designer']}>
+              <ProtectedRoute allowedRoles={['director', 'operations_manager', 'project_manager', 'drawer', 'checker', 'qa', 'designer']}>
                 <RejectedOrders />
               </ProtectedRoute>
             } 
@@ -132,8 +187,62 @@ function App() {
           <Route 
             path="assign/*" 
             element={
-              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager']}>
+              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager', 'project_manager', 'qa']}>
                 <SupervisorAssignment />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="pm-assign/*" 
+            element={
+              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager']}>
+                <PMAssignment />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="pm-projects/*" 
+            element={
+              <ProtectedRoute allowedRoles={['operations_manager']}>
+                <PMProjectAssignment />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="om-projects/*" 
+            element={
+              <ProtectedRoute allowedRoles={['ceo', 'director']}>
+                <OMProjectAssignment />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="transfer-log/*" 
+            element={
+              <ProtectedRoute allowedRoles={['ceo', 'director', 'operations_manager']}>
+                <TransferLog />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="qa-team/*" 
+            element={
+              <ProtectedRoute allowedRoles={['qa']}>
+                <QATeamAssignment />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="live-qa/*" 
+            element={
+              <ProtectedRoute allowedRoles={['live_qa', 'ceo', 'director']}>
+                <LiveQADashboard />
               </ProtectedRoute>
             } 
           />
@@ -141,6 +250,7 @@ function App() {
 
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
+      </Suspense>
     </ErrorBoundary>
   );
 }
