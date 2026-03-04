@@ -24,7 +24,38 @@ class WorkItem extends Model
         'flags' => 'array',
     ];
 
-    public function order() { return $this->belongsTo(Order::class); }
+    /**
+     * Eloquent relationship for eager-loading.
+     * Resolves the correct per-project table dynamically.
+     */
+    public function order()
+    {
+        $related = new Order;
+        if ($this->project_id) {
+            $related->setTable("project_{$this->project_id}_orders");
+        }
+        return new \Illuminate\Database\Eloquent\Relations\BelongsTo(
+            $related->newQuery(), $this, 'order_id', 'id', 'order'
+        );
+    }
+
+    /**
+     * Accessor fallback — used when accessing $workItem->order without eager-loading.
+     * Resolves the correct project table since IDs are per-project.
+     */
+    public function getOrderAttribute(): ?Order
+    {
+        // If the relationship was already loaded, return it
+        if ($this->relationLoaded('order')) {
+            return $this->getRelation('order');
+        }
+        if (!$this->project_id || !$this->order_id) return null;
+        $order = Order::findInProject($this->project_id, $this->order_id);
+        // Cache it so subsequent accesses don't re-query
+        $this->setRelation('order', $order);
+        return $order;
+    }
+
     public function project() { return $this->belongsTo(Project::class); }
     public function assignedUser() { return $this->belongsTo(User::class, 'assigned_user_id'); }
     public function team() { return $this->belongsTo(Team::class); }

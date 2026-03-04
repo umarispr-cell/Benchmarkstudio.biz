@@ -20,7 +20,7 @@ class EnforceProjectIsolation
         }
 
         // CEO and Director have org-wide access
-        if (in_array($user->role, ['ceo', 'director', 'admin'])) {
+        if (in_array($user->role, ['ceo', 'director'])) {
             return $next($request);
         }
 
@@ -30,12 +30,19 @@ class EnforceProjectIsolation
             ?? $request->input('project_id');
 
         if ($projectId) {
-            // Operations managers may have multiple projects (check via project assignments)
-            if ($user->role === 'operations_manager') {
-                // For now, check the user's primary project or query assignments
-                $allowedProjects = $user->project_id
-                    ? [$user->project_id]
-                    : [];
+            // Project Managers: scoped to their assigned projects (M2M pivot)
+            if ($user->role === 'project_manager') {
+                $allowedProjects = $user->getManagedProjectIds();
+                if (!in_array((int)$projectId, $allowedProjects)) {
+                    return response()->json([
+                        'message' => 'Access denied: you do not have access to this project.',
+                        'code' => 'PROJECT_ISOLATION_VIOLATION',
+                    ], 403);
+                }
+            }
+            // Operations managers: scoped to their assigned projects (M2M pivot)
+            elseif ($user->role === 'operations_manager') {
+                $allowedProjects = $user->getManagedProjectIds();
 
                 if (!in_array((int)$projectId, $allowedProjects)) {
                     return response()->json([

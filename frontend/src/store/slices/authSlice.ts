@@ -1,18 +1,6 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
-
-export interface User {
-  id: number;
-  name: string;
-  email: string;
-  role: string;
-  country: string;
-  department?: string;
-  project_id?: number | null;
-  team_id?: number | null;
-  layer?: string | null;
-  is_active: boolean;
-  last_activity?: string | null;
-}
+import type { User } from '../../types';
+export type { User };
 
 interface AuthState {
   user: User | null;
@@ -22,11 +10,13 @@ interface AuthState {
   sessionActive: boolean;
 }
 
+const storedToken = localStorage.getItem('token');
+
 const initialState: AuthState = {
   user: null,
-  token: localStorage.getItem('token'),
+  token: storedToken,
   isAuthenticated: false,
-  loading: false,
+  loading: !!storedToken, // If token exists, we're loading until profile is fetched
   sessionActive: false,
 };
 

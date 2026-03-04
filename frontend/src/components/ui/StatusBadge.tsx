@@ -9,6 +9,7 @@ interface StatusBadgeProps {
 const statusStyles: Record<string, { bg: string; text: string; dot: string }> = {
   // Workflow states
   RECEIVED:          { bg: 'bg-slate-100',   text: 'text-slate-700',   dot: 'bg-slate-400' },
+  PENDING_QA_REVIEW: { bg: 'bg-purple-50',   text: 'text-purple-700',  dot: 'bg-purple-400' },
   QUEUED_DRAW:       { bg: 'bg-blue-50',     text: 'text-blue-700',    dot: 'bg-blue-400' },
   QUEUED_CHECK:      { bg: 'bg-blue-50',     text: 'text-blue-700',    dot: 'bg-blue-400' },
   QUEUED_QA:         { bg: 'bg-blue-50',     text: 'text-blue-700',    dot: 'bg-blue-400' },

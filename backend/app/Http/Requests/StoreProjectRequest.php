@@ -28,6 +28,7 @@ class StoreProjectRequest extends FormRequest
             'department' => 'required|in:floor_plan,photos_enhancement',
             'client_name' => 'required|string|max:255',
             'status' => 'sometimes|in:active,inactive,completed',
+            'timezone' => 'nullable|string|max:50',
             'workflow_layers' => 'required|array',
             'metadata' => 'sometimes|array',
         ];

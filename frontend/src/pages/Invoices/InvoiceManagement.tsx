@@ -9,7 +9,7 @@ import { FileText, Plus, Eye, ChevronRight, DollarSign, TrendingUp } from 'lucid
 const INVOICE_FLOW: InvoiceStatus[] = ['draft', 'prepared', 'approved', 'issued', 'sent'];
 
 const STATUS_ACTIONS: Record<string, { next: InvoiceStatus; label: string; roles: string[] }> = {
-  draft: { next: 'prepared', label: 'Mark Prepared', roles: ['ceo', 'director', 'operations_manager'] },
+  draft: { next: 'prepared', label: 'Mark Prepared', roles: ['ceo', 'director', 'operations_manager', 'accounts_manager'] },
   prepared: { next: 'approved', label: 'Approve', roles: ['ceo', 'director'] },
   approved: { next: 'issued', label: 'Issue', roles: ['ceo', 'director'] },
   issued: { next: 'sent', label: 'Mark Sent', roles: ['ceo', 'director'] },
@@ -127,7 +127,7 @@ export default function InvoiceManagement() {
 
       {/* Filter */}
       <FilterBar searchValue={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Search invoices..."
-        filters={<select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)} className="select text-sm">
+        filters={<select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)} aria-label="Filter by status" className="select text-sm">
           <option value="all">All Status</option>
           {INVOICE_FLOW.map(s => <option key={s} value={s}>{s}</option>)}
         </select>}
@@ -165,32 +165,32 @@ export default function InvoiceManagement() {
       {/* Create Modal */}
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Invoice" subtitle="New invoices start in Draft status">
         {formError && <div className="mb-4 p-3 bg-rose-50 border border-rose-100 rounded-lg text-sm text-rose-600">{formError}</div>}
-        <div className="space-y-4">
-          <div>
-            <label className="label">Invoice Number *</label>
-            <input type="text" value={formData.invoice_number} onChange={e => setFormData({ ...formData, invoice_number: e.target.value })} className="input" placeholder="INV-001" />
+        <div className="space-y-5">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">Invoice Number <span className="text-rose-500">*</span></label>
+            <input type="text" value={formData.invoice_number} onChange={e => setFormData({ ...formData, invoice_number: e.target.value })} className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-colors" placeholder="INV-001" />
           </div>
-          <div>
-            <label className="label">Project *</label>
-            <select value={formData.project_id} onChange={e => setFormData({ ...formData, project_id: e.target.value })} className="select">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">Project <span className="text-rose-500">*</span></label>
+            <select value={formData.project_id} onChange={e => setFormData({ ...formData, project_id: e.target.value })} aria-label="Select project" className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-colors appearance-none cursor-pointer">
               <option value="">Select project...</option>
               {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="label">Month</label>
-              <select value={formData.month} onChange={e => setFormData({ ...formData, month: e.target.value })} className="select">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Month</label>
+              <select value={formData.month} onChange={e => setFormData({ ...formData, month: e.target.value })} aria-label="Invoice month" className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-colors appearance-none cursor-pointer">
                 {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={String(i + 1)}>{new Date(2000, i).toLocaleString('default', { month: 'short' })}</option>)}
               </select>
             </div>
-            <div>
-              <label className="label">Year</label>
-              <input type="number" value={formData.year} onChange={e => setFormData({ ...formData, year: e.target.value })} className="input" />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Year</label>
+              <input type="number" value={formData.year} onChange={e => setFormData({ ...formData, year: e.target.value })} aria-label="Invoice year" placeholder="2026" className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-colors" />
             </div>
-            <div>
-              <label className="label">Amount</label>
-              <input type="number" step="0.01" value={formData.total_amount} onChange={e => setFormData({ ...formData, total_amount: e.target.value })} className="input" placeholder="0.00" />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Amount</label>
+              <input type="number" step="0.01" value={formData.total_amount} onChange={e => setFormData({ ...formData, total_amount: e.target.value })} className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-colors" placeholder="0.00" />
             </div>
           </div>
         </div>

@@ -59,22 +59,20 @@ class FlagInactiveUsers extends Command
                 'USER_FLAGGED_INACTIVE',
                 'User',
                 $user->id,
-                null,
-                [
-                    'inactive_days' => $inactiveDaysCount,
-                    'is_absent' => true,
-                ],
-                [
-                    'reason' => "Auto-flagged after {$inactiveDaysCount} days of inactivity",
-                ]
+                $user->project_id,
+                ['inactive_days' => $user->getOriginal('inactive_days'), 'is_absent' => $user->getOriginal('is_absent')],
+                ['inactive_days' => $inactiveDaysCount, 'is_absent' => true, 'reason' => "Auto-flagged after {$inactiveDaysCount} days of inactivity"]
             );
 
             $flaggedCount++;
 
             // Reassign any orders currently assigned to this user
-            $assignedOrders = Order::where('assigned_to', $user->id)
-                ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED', 'ON_HOLD'])
-                ->get();
+            $assignedOrders = $user->project_id
+                ? Order::forProject($user->project_id)
+                    ->where('assigned_to', $user->id)
+                    ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED', 'ON_HOLD'])
+                    ->get()
+                : collect();
 
             foreach ($assignedOrders as $order) {
                 // Unassign the order so it goes back to queue
@@ -88,11 +86,9 @@ class FlagInactiveUsers extends Command
                     'ORDER_AUTO_REASSIGNED',
                     'Order',
                     $order->id,
+                    $order->project_id,
                     ['assigned_to' => $previousAssignment],
-                    ['assigned_to' => null],
-                    [
-                        'reason' => "User {$user->name} flagged inactive after {$inactiveDaysCount} days",
-                    ]
+                    ['assigned_to' => null, 'reason' => "User {$user->name} flagged inactive after {$inactiveDaysCount} days"]
                 );
 
                 $reassignedOrdersCount++;

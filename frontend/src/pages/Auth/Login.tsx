@@ -4,15 +4,8 @@ import { useDispatch } from 'react-redux';
 import { setCredentials, setLoading as setAuthLoading } from '../../store/slices/authSlice';
 import { authService } from '../../services';
 import { motion } from 'framer-motion';
-import { LogIn, AlertCircle, Eye, EyeOff, Globe, Building2, Layers, Zap } from 'lucide-react';
+import { LogIn, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import BenchmarkLogo from '../../components/ui/BenchmarkLogo';
-
-const stats = [
-  { label: 'Countries', value: '4', icon: Globe },
-  { label: 'Departments', value: '2', icon: Building2 },
-  { label: 'Workflow Layers', value: '3', icon: Layers },
-  { label: 'Auto-Assignment', value: 'On', icon: Zap },
-];
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -32,7 +25,6 @@ export default function Login() {
       const res = await authService.login({ email, password });
       const { user, token } = res.data;
       dispatch(setCredentials({ user, token }));
-      localStorage.setItem('token', token);
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Invalid credentials.');
@@ -83,23 +75,6 @@ export default function Login() {
             <p className="mt-6 text-lg max-w-md leading-relaxed" style={{ color: 'rgba(42, 167, 160, 0.7)' }}>
               Enterprise workflow management for high-volume project operations across multiple regions.
             </p>
-            
-            {/* Stats grid */}
-            <div className="mt-12 grid grid-cols-2 gap-3 max-w-sm">
-              {stats.map((s, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 + i * 0.1 }}
-                  className="rounded-xl p-4 bg-[#2AA7A0]/10 border border-[#2AA7A0]/20 hover:border-[#2AA7A0]/40 transition-colors"
-                >
-                  <s.icon className="w-5 h-5 text-[#2AA7A0] mb-2" />
-                  <div className="text-2xl font-bold text-white">{s.value}</div>
-                  <div className="text-xs text-[#2AA7A0]/60 mt-0.5">{s.label}</div>
-                </motion.div>
-              ))}
-            </div>
           </motion.div>
         </div>
       </div>

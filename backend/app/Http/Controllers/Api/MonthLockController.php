@@ -173,6 +173,60 @@ class MonthLockController extends Controller
         return response()->json(['message' => 'Panel cleared. Historical data preserved.']);
     }
 
+    /**
+     * POST /month-locks/{projectId}/update-counts
+     * Operations Manager can update service category counts before locking.
+     */
+    public function updateCounts(Request $request, int $projectId)
+    {
+        $request->validate([
+            'month' => 'required|integer|min:1|max:12',
+            'year' => 'required|integer|min:2020|max:2100',
+            'service_counts' => 'required|array',
+        ]);
+
+        $user = $request->user();
+        if (!in_array($user->role, ['operations_manager', 'director', 'ceo'])) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $month = $request->input('month');
+        $year = $request->input('year');
+
+        $lock = MonthLock::where('project_id', $projectId)
+            ->where('month', $month)
+            ->where('year', $year)
+            ->first();
+
+        if ($lock && $lock->is_locked) {
+            return response()->json(['message' => 'Cannot update counts for a locked month.'], 422);
+        }
+
+        // Compute base counts first
+        $baseCounts = $this->computeProductionCounts($projectId, $month, $year);
+
+        // Merge with manually entered service counts
+        $serviceCounts = $request->input('service_counts');
+        $mergedCounts = array_merge($baseCounts, ['service_categories' => $serviceCounts]);
+
+        $lock = MonthLock::updateOrCreate(
+            ['project_id' => $projectId, 'month' => $month, 'year' => $year],
+            [
+                'frozen_counts' => $mergedCounts,
+                'is_locked' => false,
+            ]
+        );
+
+        AuditService::log($user->id, 'UPDATE_SERVICE_COUNTS', 'MonthLock', $lock->id, $projectId, null, [
+            'service_counts' => $serviceCounts,
+        ]);
+
+        return response()->json([
+            'lock' => $lock,
+            'message' => 'Service counts updated.',
+        ]);
+    }
+
     // ── Private ──
 
     private function computeProductionCounts(int $projectId, int $month, int $year): array
@@ -180,16 +234,18 @@ class MonthLockController extends Controller
         $startDate = "{$year}-" . str_pad($month, 2, '0', STR_PAD_LEFT) . "-01";
         $endDate = date('Y-m-t', strtotime($startDate));
 
-        $received = Order::where('project_id', $projectId)
+        $received = Order::forProject($projectId)
             ->whereBetween('received_at', [$startDate, $endDate . ' 23:59:59'])
             ->count();
 
-        $delivered = Order::where('project_id', $projectId)
+        $deliveredOrders = Order::forProject($projectId)
             ->where('workflow_state', 'DELIVERED')
             ->whereBetween('delivered_at', [$startDate, $endDate . ' 23:59:59'])
-            ->count();
+            ->get();
 
-        $pending = Order::where('project_id', $projectId)
+        $delivered = $deliveredOrders->count();
+
+        $pending = Order::forProject($projectId)
             ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED'])
             ->count();
 
@@ -202,11 +258,97 @@ class MonthLockController extends Controller
             ->pluck('count', 'stage')
             ->all();
 
+        // ── Floor Plan Invoice Categories ──
+        // Aggregate by plan_type, bedrooms, area_range from metadata
+        $byPlanType = [
+            'black_and_white' => 0,
+            'color' => 0,
+            'texture' => 0,
+            '3d' => 0,
+            'other' => 0,
+        ];
+
+        $byBedrooms = [
+            '1br' => 0,
+            '2br' => 0,
+            '3br' => 0,
+            '4br' => 0,
+            '5br_plus' => 0,
+        ];
+
+        $byAreaRange = [
+            'under_1000sqft' => 0,
+            '1000_2000sqft' => 0,
+            '2000_3000sqft' => 0,
+            '3000_4000sqft' => 0,
+            'over_4000sqft' => 0,
+        ];
+
+        // ── Photos Enhancement Invoice Categories ──
+        // Aggregate by image_type from metadata
+        $byImageType = [
+            'general' => 0,
+            'hdr' => 0,
+            'object_removal' => 0,
+            'virtual_furniture' => 0,
+            'other' => 0,
+        ];
+
+        foreach ($deliveredOrders as $order) {
+            $meta = $order->metadata ?? [];
+
+            // Plan Type (Floor Plan)
+            $planType = strtolower($meta['plan_type'] ?? 'other');
+            $planType = str_replace([' ', '&'], ['_', 'and'], $planType);
+            if (isset($byPlanType[$planType])) {
+                $byPlanType[$planType]++;
+            } else {
+                $byPlanType['other']++;
+            }
+
+            // Bedrooms (Floor Plan)
+            $bedrooms = intval($meta['bedrooms'] ?? 0);
+            if ($bedrooms >= 5) {
+                $byBedrooms['5br_plus']++;
+            } elseif ($bedrooms >= 1) {
+                $byBedrooms[$bedrooms . 'br']++;
+            }
+
+            // Area (Floor Plan - square feet)
+            $area = intval($meta['area_sqft'] ?? 0);
+            if ($area < 1000) {
+                $byAreaRange['under_1000sqft']++;
+            } elseif ($area < 2000) {
+                $byAreaRange['1000_2000sqft']++;
+            } elseif ($area < 3000) {
+                $byAreaRange['2000_3000sqft']++;
+            } elseif ($area < 4000) {
+                $byAreaRange['3000_4000sqft']++;
+            } else {
+                $byAreaRange['over_4000sqft']++;
+            }
+
+            // Image Type (Photos Enhancement)
+            $imageType = strtolower($meta['image_type'] ?? 'general');
+            $imageType = str_replace([' ', '-'], '_', $imageType);
+            if (isset($byImageType[$imageType])) {
+                $byImageType[$imageType]++;
+            } else {
+                $byImageType['other']++;
+            }
+        }
+
         return [
             'received' => $received,
             'delivered' => $delivered,
             'pending' => $pending,
             'stage_completions' => $stageCompletions,
+            // Floor Plan categories
+            'by_plan_type' => $byPlanType,
+            'by_bedrooms' => $byBedrooms,
+            'by_area_range' => $byAreaRange,
+            // Photos Enhancement categories
+            'by_image_type' => $byImageType,
             'computed_at' => now()->toIso8601String(),
         ];
     }

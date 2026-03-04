@@ -1,5 +1,11 @@
 <?php
 
+use App\Jobs\AutoAssignOrders;
+use App\Jobs\AutoReassignOrders;
+use App\Jobs\ComputeWorkerStats;
+use App\Jobs\RefreshDashboardCache;
+use App\Jobs\ResetDailyCounters;
+use App\Jobs\UpdateInactiveUsers;
 use App\Models\User;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -9,9 +15,51 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Per CEO Requirements: Auto-flag users inactive for 15+ days
-// Runs daily at midnight
-Schedule::command('users:flag-inactive --days=15')
+// ══════════════════════════════════════════════════════════════════════════════
+// SCHEDULED JOBS FOR HIGH-VOLUME SCALABILITY
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Real-time dashboard cache refresh (every minute)
+Schedule::job(new RefreshDashboardCache())
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->description('Pre-compute dashboard statistics for fast retrieval');
+
+// Auto-reassign orders from inactive workers (every 5 minutes)
+Schedule::job(new AutoReassignOrders(30)) // 30 minutes inactivity threshold
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->description('Reassign orders from inactive/absent workers');
+
+// Push-based auto-assignment: assign queued orders to available workers (every minute)
+Schedule::job(new AutoAssignOrders())
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->description('Auto-assign queued orders to available idle workers');
+
+// Smart Assignment: compute worker stats & scores (every 10 minutes)
+Schedule::job(new ComputeWorkerStats())
+    ->everyTenMinutes()
+    ->withoutOverlapping()
+    ->description('Compute avg_completion_minutes, rejection_rate, assignment_score per worker');
+
+// Reset daily counters at midnight
+Schedule::job(new ResetDailyCounters())
     ->daily()
     ->at('00:00')
-    ->description('Flag inactive users and reassign their orders');
+    ->withoutOverlapping()
+    ->description('Reset today_completed counters for all users');
+
+// Per CEO Requirements: Flag inactive users (daily at midnight)
+Schedule::job(new UpdateInactiveUsers())
+    ->daily()
+    ->at('00:05')
+    ->withoutOverlapping()
+    ->description('Flag users inactive for 15+ days');
+
+// Legacy command support
+Schedule::command('users:flag-inactive --days=15')
+    ->daily()
+    ->at('00:05')
+    ->description('Legacy: Flag inactive users and reassign their orders');
+

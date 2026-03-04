@@ -104,6 +104,8 @@ export interface Project {
   target_config: Record<string, unknown> | null;
   metadata: Record<string, unknown> | null;
   description?: string;
+  timezone?: string;
+  queue_name?: string;
 }
 
 export interface ProjectInput {
@@ -404,13 +406,20 @@ export interface OpsDashboardData {
     email: string;
     role: string;
     project_id?: number | null;
+    project_name?: string;
+    team_id?: number | null;
+    team_name?: string;
     is_active: boolean;
     is_absent: boolean;
     is_online: boolean;
     wip_count: number;
     today_completed: number;
+    completed_week?: number;
+    completed_month?: number;
     assigned_work?: number;
     pending_work?: number;
+    daily_target?: number;
+    avg_completion_minutes?: number;
     assignment_score: number;
     last_activity: string | null;
   }>;
@@ -488,9 +497,21 @@ export interface PMDashboardData {
     is_absent: boolean;
     assigned_work: number;
     completed_today: number;
+    completed_week: number;
+    completed_month: number;
     pending_work: number;
     wip_count: number;
+    daily_target: number;
+    avg_completion_minutes: number;
     assignment_score: number;
+  }>;
+  role_summary: Record<string, {
+    total: number;
+    online: number;
+    absent: number;
+    completed_today: number;
+    completed_week: number;
+    total_assigned: number;
   }>;
   order_queue: Array<{
     id: number;

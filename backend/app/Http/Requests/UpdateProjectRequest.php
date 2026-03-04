@@ -29,6 +29,7 @@ class UpdateProjectRequest extends FormRequest
             'department' => 'sometimes|in:floor_plan,photos_enhancement',
             'client_name' => 'sometimes|string|max:255',
             'status' => 'sometimes|in:active,inactive,completed',
+            'timezone' => 'nullable|string|max:50',
             'workflow_layers' => 'sometimes|array',
             'metadata' => 'sometimes|array',
         ];

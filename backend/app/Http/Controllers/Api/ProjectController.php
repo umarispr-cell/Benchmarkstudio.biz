@@ -7,6 +7,8 @@ use App\Http\Requests\StoreProjectRequest;
 use App\Http\Requests\UpdateProjectRequest;
 use App\Models\ActivityLog;
 use App\Models\Project;
+use App\Models\Team;
+use App\Services\ProjectOrderService;
 use Illuminate\Http\Request;
 
 class ProjectController extends Controller
@@ -16,15 +18,17 @@ class ProjectController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Project::with(['teams', 'users']);
+        $query = Project::with(['teams:id,name,project_id,is_active'])
+            ->withCount(['teams', 'users']);
 
+        // Scope projects by role: OM/PM only see their assigned projects
         $user = $request->user();
         if ($user->role === 'operations_manager') {
-            if ($user->project_id) {
-                $query->where('id', $user->project_id);
-            } else {
-                $query->where('country', $user->country);
-            }
+            $omProjectIds = $user->getManagedProjectIds();
+            $query->whereIn('id', $omProjectIds);
+        } elseif ($user->role === 'project_manager') {
+            $pmProjectIds = $user->getManagedProjectIds();
+            $query->whereIn('id', $pmProjectIds);
         }
 
         // Filter by country
@@ -63,7 +67,11 @@ class ProjectController extends Controller
     {
         $project = Project::create($request->validated());
 
+        // Create per-project order table
+        ProjectOrderService::createTableForProject($project);
+
         ActivityLog::log('created_project', Project::class, $project->id, null, $project->toArray());
+        \App\Services\AuditService::logProjectCreated($project->id, $project->toArray());
 
         return response()->json([
             'message' => 'Project created successfully',
@@ -76,7 +84,13 @@ class ProjectController extends Controller
      */
     public function show(string $id)
     {
-        $project = Project::with(['teams.users', 'users', 'orders', 'invoices'])->findOrFail($id);
+        $project = Project::with(['teams.users', 'users', 'invoices'])->findOrFail($id);
+
+        // Load order counts from the per-project dynamic table
+        $tableName = \App\Services\ProjectOrderService::getTableName($project->id);
+        if (\Schema::hasTable($tableName)) {
+            $project->setAttribute('order_count', \DB::table($tableName)->count());
+        }
 
         return response()->json([
             'data' => $project,
@@ -94,6 +108,7 @@ class ProjectController extends Controller
         $project->update($request->validated());
 
         ActivityLog::log('updated_project', Project::class, $project->id, $oldValues, $project->toArray());
+        \App\Services\AuditService::logProjectUpdated($project->id, $oldValues, $project->fresh()->toArray());
 
         return response()->json([
             'message' => 'Project updated successfully',
@@ -109,9 +124,13 @@ class ProjectController extends Controller
         $project = Project::findOrFail($id);
         $oldValues = $project->toArray();
 
+        // Drop the per-project order table
+        ProjectOrderService::dropTableForProject((int) $id);
+
         $project->delete();
 
         ActivityLog::log('deleted_project', Project::class, $id, $oldValues, null);
+        \App\Services\AuditService::logProjectDeleted((int)$id, $oldValues);
 
         return response()->json([
             'message' => 'Project deleted successfully',
@@ -149,6 +168,53 @@ class ProjectController extends Controller
 
         return response()->json([
             'data' => $teams,
+        ]);
+    }
+
+    /**
+     * Create a new team for a project.
+     */
+    public function createTeam(Request $request, string $id)
+    {
+        $project = Project::findOrFail($id);
+
+        $request->validate([
+            'name' => 'required|string|max:100',
+        ]);
+
+        $team = $project->teams()->create([
+            'name' => $request->name,
+            'is_active' => true,
+            'qa_count' => 0,
+            'checker_count' => 0,
+            'drawer_count' => 0,
+            'designer_count' => 0,
+        ]);
+
+        return response()->json([
+            'message' => 'Team created successfully',
+            'data' => $team->load('users:id,name,email,role,team_id,is_active,is_absent'),
+        ], 201);
+    }
+
+    /**
+     * Delete a team (only if no members assigned).
+     */
+    public function deleteTeam(string $projectId, string $teamId)
+    {
+        $project = Project::findOrFail($projectId);
+        $team = $project->teams()->findOrFail($teamId);
+
+        if ($team->users()->count() > 0) {
+            return response()->json([
+                'message' => 'Cannot delete team with assigned members. Remove all members first.',
+            ], 422);
+        }
+
+        $team->delete();
+
+        return response()->json([
+            'message' => 'Team deleted successfully',
         ]);
     }
 }

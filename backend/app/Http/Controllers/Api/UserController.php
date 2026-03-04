@@ -19,6 +19,37 @@ class UserController extends Controller
     {
         $query = User::with(['project', 'team']);
 
+        // Scope by role
+        $authUser = $request->user();
+        if ($authUser->role === 'ceo') {
+            // CEO only sees Directors and Operations Managers
+            $query->whereIn('role', ['director', 'operations_manager']);
+        } elseif ($authUser->role === 'project_manager') {
+            // PM sees only users in their team (if team_id set), else managed projects
+            if ($authUser->team_id) {
+                $query->where(function ($q) use ($authUser) {
+                    $q->where('team_id', $authUser->team_id)
+                      ->orWhere('id', $authUser->id); // always see self
+                });
+            } else {
+                $managedIds = $authUser->getManagedProjectIds();
+                $query->where(function ($q) use ($managedIds, $authUser) {
+                    $q->whereIn('project_id', $managedIds)
+                      ->orWhere('id', $authUser->id); // always see self
+                });
+            }
+        } elseif ($authUser->role === 'operations_manager') {
+            $managedIds = $authUser->getManagedProjectIds();
+            $query->where(function ($q) use ($managedIds, $authUser) {
+                // OM sees workers in their projects + PMs assigned to their projects + self
+                $q->whereIn('project_id', $managedIds)
+                  ->orWhereHas('managedProjects', function ($sub) use ($managedIds) {
+                      $sub->whereIn('projects.id', $managedIds);
+                  })
+                  ->orWhere('id', $authUser->id);
+            });
+        }
+
         // Filter by role
         if ($request->has('role')) {
             $query->where('role', $request->role);
@@ -70,9 +101,18 @@ class UserController extends Controller
         $data = $request->validated();
         // Password is auto-hashed by User model's 'hashed' cast
 
+        // Auto-derive country from project if not provided
+        if (empty($data['country']) && !empty($data['project_id'])) {
+            $project = \App\Models\Project::find($data['project_id']);
+            if ($project) {
+                $data['country'] = $project->country;
+            }
+        }
+
         $user = User::create($data);
 
         ActivityLog::log('created_user', User::class, $user->id, null, $user->toArray());
+        \App\Services\AuditService::logUserCreated($user->id, $user->toArray());
 
         return response()->json([
             'message' => 'User created successfully',
@@ -98,7 +138,29 @@ class UserController extends Controller
     public function update(UpdateUserRequest $request, string $id)
     {
         $user = User::findOrFail($id);
+        $authUser = $request->user();
+
+        // PM can only update users in their team/project scope
+        if ($authUser->role === 'project_manager') {
+            $canEdit = false;
+            if ($authUser->team_id && $user->team_id === $authUser->team_id) {
+                $canEdit = true;
+            } elseif (!$authUser->team_id) {
+                $managedIds = $authUser->getManagedProjectIds();
+                if (in_array($user->project_id, $managedIds)) {
+                    $canEdit = true;
+                }
+            }
+            if ((int)$user->id === (int)$authUser->id) {
+                $canEdit = true; // can always edit self
+            }
+            if (!$canEdit) {
+                return response()->json(['message' => 'You can only edit users in your team.'], 403);
+            }
+        }
+
         $oldValues = $user->toArray();
+        $oldProjectId = $user->project_id;
 
         $data = $request->validated();
         // Password is auto-hashed by User model's 'hashed' cast
@@ -106,6 +168,17 @@ class UserController extends Controller
         $user->update($data);
 
         ActivityLog::log('updated_user', User::class, $user->id, $oldValues, $user->toArray());
+        \App\Services\AuditService::logUserUpdated($user->id, $oldValues, $user->fresh()->toArray());
+
+        // Log project switch if project_id changed
+        if (isset($data['project_id']) && $data['project_id'] != $oldProjectId) {
+            \App\Services\AuditService::logResourceSwitch(
+                $user->id,
+                $oldProjectId,
+                $data['project_id'],
+                'User project changed via update'
+            );
+        }
 
         return response()->json([
             'message' => 'User updated successfully',
@@ -119,11 +192,28 @@ class UserController extends Controller
     public function destroy(string $id)
     {
         $user = User::findOrFail($id);
+        $authUser = auth()->user();
+
+        // Prevent self-deletion
+        if ((int)$id === (int)$authUser->id) {
+            return response()->json(['message' => 'You cannot delete yourself.'], 403);
+        }
+
+        // Role hierarchy check: prevent deleting users at same or higher level
+        $roleHierarchy = ['ceo' => 6, 'director' => 5, 'operations_manager' => 4, 'project_manager' => 3, 'accounts_manager' => 3, 'qa' => 2, 'drawer' => 1, 'checker' => 1, 'designer' => 1];
+        $authLevel = $roleHierarchy[$authUser->role] ?? 0;
+        $targetLevel = $roleHierarchy[$user->role] ?? 0;
+
+        if ($targetLevel >= $authLevel) {
+            return response()->json(['message' => 'You cannot delete a user with equal or higher role.'], 403);
+        }
+
         $oldValues = $user->toArray();
 
         $user->delete();
 
         ActivityLog::log('deleted_user', User::class, $id, $oldValues, null);
+        \App\Services\AuditService::logUserDeleted((int)$id, $oldValues);
 
         return response()->json([
             'message' => 'User deleted successfully',
@@ -175,6 +265,7 @@ class UserController extends Controller
         NotificationService::userDeactivated($user, auth()->user());
 
         ActivityLog::log('deactivated_user', User::class, $user->id, $oldValues, ['is_active' => false]);
+        \App\Services\AuditService::logUserDeactivated($user->id, $user->name);
 
         return response()->json([
             'message' => 'User deactivated and work reassigned.',

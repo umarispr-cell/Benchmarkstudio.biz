@@ -18,7 +18,7 @@ const PAGES = [
   { name: 'Work Queue', path: '/work', keywords: 'work queue order task' },
   { name: 'Import Orders', path: '/import', keywords: 'import csv upload' },
   { name: 'Assignments', path: '/assign', keywords: 'assign supervisor team' },
-  { name: 'Rejected Orders', path: '/rejected', keywords: 'rejected rework quality' },
+  { name: 'Rejected Orders', path: '/rejected', keywords: 'rejected rework quality', roles: ['director','operations_manager','drawer','checker','qa','designer'] },
 ];
 
 export default function Header() {
@@ -118,7 +118,7 @@ export default function Header() {
                     }
                   }}
                 />
-                <button onClick={() => { setShowSearch(false); setQuery(''); }} className="p-1 text-slate-400 hover:text-slate-600">
+                <button onClick={() => { setShowSearch(false); setQuery(''); }} aria-label="Close search" className="p-1 text-slate-400 hover:text-slate-600">
                   <X className="h-4 w-4" />
                 </button>
               </div>

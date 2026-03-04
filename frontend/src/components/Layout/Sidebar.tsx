@@ -1,28 +1,40 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '../../store/store';
+import { logout } from '../../store/slices/authSlice';
+import { resetNotifications } from '../../store/slices/notificationSlice';
+import { authService } from '../../services';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, FolderKanban, Users, Receipt, ClipboardList,
   Upload, AlertTriangle, UserPlus, ChevronsLeft, ChevronsRight,
-  Command, LogOut,
+  Command, LogOut, UserCheck, UsersRound, Briefcase, Shield, ScrollText,
+  ShieldCheck,
 } from 'lucide-react';
 import BenchmarkLogo from '../ui/BenchmarkLogo';
 
 const NAV = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['ceo','director','operations_manager','supervisor','drawer','checker','qa','designer'] },
-  { name: 'Projects', href: '/projects', icon: FolderKanban, roles: ['ceo','director','operations_manager'] },
-  { name: 'Users', href: '/users', icon: Users, roles: ['ceo','director','operations_manager'] },
-  { name: 'Invoices', href: '/invoices', icon: Receipt, roles: ['ceo','director'] },
-  { name: 'Import Orders', href: '/import', icon: Upload, roles: ['ceo','director','operations_manager','supervisor'] },
-  { name: 'Assignments', href: '/assign', icon: UserPlus, roles: ['ceo','director','operations_manager','supervisor'] },
-  { name: 'Rejected', href: '/rejected', icon: AlertTriangle, roles: ['ceo','director','operations_manager','supervisor','drawer','checker','qa','designer'] },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['ceo','director','operations_manager','project_manager','drawer','checker','qa','designer','accounts_manager','live_qa'] },
+  { name: 'Projects', href: '/projects', icon: FolderKanban, roles: ['ceo','director','operations_manager','project_manager'] },
+  { name: 'Users', href: '/users', icon: Users, roles: ['ceo','director','operations_manager','project_manager'] },
+  { name: 'Invoices', href: '/invoices', icon: Receipt, roles: ['ceo','director','accounts_manager'] },
+  { name: 'Import Orders', href: '/import', icon: Upload, roles: ['operations_manager','project_manager'] },
+  { name: 'OM Assignments', href: '/om-projects', icon: Shield, roles: ['ceo','director'] },
+  { name: 'PM Assignments', href: '/pm-projects', icon: Briefcase, roles: ['operations_manager'] },
+  { name: 'Operational Log', href: '/transfer-log', icon: ScrollText, roles: ['ceo','director','operations_manager'] },
+  { name: 'Assign to QA', href: '/pm-assign', icon: UserCheck, roles: ['director'] },
+  { name: 'My Team', href: '/qa-team', icon: UsersRound, roles: ['qa'] },
+  { name: 'Assignments', href: '/assign', icon: UserPlus, roles: ['director','operations_manager','project_manager','qa'] },
+  { name: 'Live QA', href: '/live-qa', icon: ShieldCheck, roles: ['live_qa','director'] },
+  { name: 'Rejected', href: '/rejected', icon: AlertTriangle, roles: ['director','operations_manager','project_manager','drawer','checker','qa','designer'] },
   { name: 'Work Queue', href: '/work', icon: ClipboardList, roles: ['drawer','checker','qa','designer'] },
 ];
 
 export default function Sidebar() {
   const location = useLocation();
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { user } = useSelector((state: RootState) => state.auth);
   const [collapsed, setCollapsed] = useState(false);
   const [isMac, setIsMac] = useState(false);
@@ -30,6 +42,15 @@ export default function Sidebar() {
   useEffect(() => {
     setIsMac(navigator.platform.toLowerCase().includes('mac'));
   }, []);
+
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+    } catch { /* ignore */ }
+    dispatch(resetNotifications());
+    dispatch(logout());
+    navigate('/login');
+  };
 
   const items = NAV.filter(i => user?.role && i.roles.includes(user.role));
 
@@ -182,6 +203,7 @@ export default function Sidebar() {
               <div className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-status-success animate-pulse" />
                 <button 
+                  onClick={handleLogout}
                   className="p-1.5 rounded-md text-ink-tertiary hover:text-ink-secondary hover:bg-surface-tertiary opacity-0 group-hover:opacity-100 transition-all"
                   title="Sign out"
                 >

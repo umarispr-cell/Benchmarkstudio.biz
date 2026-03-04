@@ -11,7 +11,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 
 // ─── Lazy-loaded page components (code-split per route) ───
 const Dashboard = lazy(() => import('./pages/Dashboard/Dashboard'));
-const CEODashboard = lazy(() => import('./pages/Dashboard/CEODashboard'));
+const CEODashboard = lazy(() => import('./pages/Dashboard/CEODashboard').catch(() => { window.location.reload(); return import('./pages/Dashboard/CEODashboard'); }));
 const OperationsManagerDashboard = lazy(() => import('./pages/Dashboard/OperationsManagerDashboard'));
 const ProjectManagerDashboard = lazy(() => import('./pages/Dashboard/ProjectManagerDashboard'));
 const WorkerDashboard = lazy(() => import('./pages/Dashboard/WorkerDashboard'));
@@ -42,11 +42,9 @@ function PageLoader() {
   );
 }
 
-// Live QA System v2.0 — cache bust
 function App() {
   const dispatch = useDispatch();
   const { isAuthenticated, user, token } = useSelector((state: RootState) => state.auth);
-  console.debug('app:v2.1');
 
   // Restore session on page refresh: if token exists but user is not loaded,
   // fetch the profile to re-establish authentication state
@@ -64,13 +62,13 @@ function App() {
           dispatch(setLoading(false));
         });
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Session monitoring effect
   useEffect(() => {
     if (isAuthenticated) {
       let cancelled = false;
-      // Set up session check interval (every 5 minutes)
+      // Set up session check interval (every 2 minutes)
       const sessionCheck = setInterval(async () => {
         try {
           await authService.sessionCheck();

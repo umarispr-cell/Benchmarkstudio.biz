@@ -12,6 +12,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Prepend proxy header middleware to handle Cloudflare stripping Authorization
+        $middleware->prepend(\App\Http\Middleware\ProxyAuthorizationHeader::class);
+
+        // For API routes, never redirect to a login page — return 401 JSON instead.
+        // This prevents "Route [login] not defined" when auth:sanctum gets a
+        // request without Accept: application/json.
+        $middleware->redirectGuestsTo(fn (\Illuminate\Http\Request $request) => null);
+
         $middleware->alias([
             'role' => \App\Http\Middleware\CheckRole::class,
             'single.session' => \App\Http\Middleware\EnforceSingleSession::class,

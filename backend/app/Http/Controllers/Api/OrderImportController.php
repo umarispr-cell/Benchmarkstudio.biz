@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use App\Services\ProjectOrderService;
 use Illuminate\Support\Str;
 
 class OrderImportController extends Controller
@@ -84,9 +85,18 @@ class OrderImportController extends Controller
     public function importCsv(Request $request, int $projectId)
     {
         $request->validate([
-            'file' => 'required|file|mimes:csv,txt|max:10240',
+            'file' => 'required|file|max:10240',
             'source_id' => 'nullable|exists:order_import_sources,id',
         ]);
+
+        // Manually check file extension (php_fileinfo may not be available)
+        $ext = strtolower($request->file('file')->getClientOriginalExtension());
+        if (!in_array($ext, ['csv', 'txt'])) {
+            return response()->json([
+                'message' => 'The file must be a CSV or TXT file.',
+                'errors' => ['file' => ['Only .csv and .txt files are allowed.']],
+            ], 422);
+        }
 
         $project = Project::findOrFail($projectId);
         $user = auth()->user();
@@ -132,16 +142,45 @@ class OrderImportController extends Controller
     {
         $importLog->markStarted();
 
-        $handle = fopen(Storage::path($path), 'r');
+        $fullPath = Storage::path($path);
+        if (!file_exists($fullPath)) {
+            $importLog->markFailed(['File not found after upload']);
+            return ['total' => 0, 'imported' => 0, 'skipped' => 0, 'errors' => [['row' => 0, 'message' => 'File not found']]];
+        }
+
+        $handle = fopen($fullPath, 'r');
         $headers = fgetcsv($handle);
+
+        if (!$headers || count($headers) === 0) {
+            fclose($handle);
+            $importLog->markFailed(['CSV has no headers']);
+            return ['total' => 0, 'imported' => 0, 'skipped' => 0, 'errors' => [['row' => 0, 'message' => 'CSV has no headers']]];
+        }
+
+        // Trim BOM and whitespace from headers
+        $headers = array_map(fn($h) => trim($h, "\xEF\xBB\xBF \t\n\r"), $headers);
         
-        // Default field mapping
+        // Default field mapping — also add common CSV column name aliases
         $mapping = $fieldMapping ?? [
             'order_number' => 'order_number',
             'client_reference' => 'client_reference',
+            'client_name' => 'client_name',
+            'address' => 'address',
             'priority' => 'priority',
             'received_at' => 'received_at',
+            'due_in' => 'due_in',
+            'due_date' => 'due_date',
         ];
+
+        // Also auto-map any CSV header that exactly matches a known column
+        $knownCols = ['order_number','client_reference','client_name','address','priority','received_at',
+            'due_in','due_date','order_type','complexity_weight','estimated_minutes'];
+        foreach ($headers as $h) {
+            $lh = strtolower(trim($h));
+            if (in_array($lh, $knownCols) && !isset($mapping[$lh])) {
+                $mapping[$lh] = $h;
+            }
+        }
 
         $total = 0;
         $imported = 0;
@@ -179,8 +218,9 @@ class OrderImportController extends Controller
                 }
 
                 // Validate
+                $tableName = ProjectOrderService::getTableName($project->id);
                 $validator = Validator::make($orderData, [
-                    'order_number' => 'required|unique:orders,order_number',
+                    'order_number' => 'required|unique:' . $tableName . ',order_number',
                     'project_id' => 'required|exists:projects,id',
                     'priority' => 'nullable|in:low,normal,high,urgent',
                 ]);
@@ -198,7 +238,15 @@ class OrderImportController extends Controller
                 // Set default priority
                 $orderData['priority'] = $orderData['priority'] ?? 'normal';
 
-                Order::create($orderData);
+                // Set workflow state so orders enter the queue
+                if (empty($orderData['workflow_state'])) {
+                    $orderData['workflow_state'] = ($project->workflow_type === 'PH_2_LAYER') ? 'QUEUED_DESIGN' : 'QUEUED_DRAW';
+                }
+                if (empty($orderData['workflow_type'])) {
+                    $orderData['workflow_type'] = $project->workflow_type;
+                }
+
+                Order::createForProject($project->id, $orderData);
                 $imported++;
                 $importLog->incrementImported();
 
@@ -364,21 +412,25 @@ class OrderImportController extends Controller
                     $mappedData['order_number'] = $project->code . '-' . ($mappedData['client_portal_id'] ?? Str::upper(Str::random(8)));
                 }
 
-                // Check for duplicate
-                $exists = Order::where('order_number', $mappedData['order_number'])
-                    ->orWhere(function ($query) use ($mappedData, $project) {
-                        if (!empty($mappedData['client_portal_id'])) {
-                            $query->where('project_id', $project->id)
-                                ->where('client_portal_id', $mappedData['client_portal_id']);
-                        }
-                    })->exists();
+                // Check for duplicate by order_number or client_portal_id
+                $existsQuery = Order::forProject($project->id)
+                    ->where('order_number', $mappedData['order_number']);
+
+                if (!empty($mappedData['client_portal_id'])) {
+                    $existsQuery->orWhere(function ($query) use ($mappedData, $project) {
+                        $query->where('project_id', $project->id)
+                            ->where('client_portal_id', $mappedData['client_portal_id']);
+                    });
+                }
+
+                $exists = $existsQuery->exists();
 
                 if ($exists) {
                     $skipped++;
                     continue;
                 }
 
-                Order::create($mappedData);
+                Order::createForProject($project->id, $mappedData);
                 $imported++;
 
             } catch (\Exception $e) {

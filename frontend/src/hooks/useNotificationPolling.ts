@@ -37,7 +37,7 @@ export function useNotificationPolling() {
     // Fetch immediately on mount
     poll();
 
-    // Poll every 15s
+    // Poll every 30s
     intervalRef.current = setInterval(poll, POLL_INTERVAL);
 
     return () => {

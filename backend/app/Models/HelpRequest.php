@@ -24,9 +24,19 @@ class HelpRequest extends Model
         'responded_at' => 'datetime',
     ];
 
+    /**
+     * Dynamically resolve the order from the per-project table.
+     * Cannot use simple belongsTo because orders live in project_{id}_orders.
+     */
     public function order()
     {
-        return $this->belongsTo(Order::class);
+        $related = new Order;
+        if ($this->project_id) {
+            $related->setTable("project_{$this->project_id}_orders");
+        }
+        return new \Illuminate\Database\Eloquent\Relations\BelongsTo(
+            $related->newQuery(), $this, 'order_id', 'id', 'order'
+        );
     }
 
     public function requester()

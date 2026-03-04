@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ProjectOrderService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -11,10 +12,10 @@ class Project extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'code', 'name', 'country', 'department', 'client_name', 'status',
+        'code', 'name', 'queue_name', 'country', 'department', 'client_name', 'status',
         'total_orders', 'completed_orders', 'pending_orders',
         'total_teams', 'active_teams', 'total_staff', 'active_staff',
-        'workflow_layers', 'metadata',
+        'workflow_layers', 'metadata', 'timezone',
         'workflow_type', 'sla_config', 'invoice_categories_config',
         'client_portal_config', 'target_config', 'wip_cap',
     ];
@@ -45,10 +46,18 @@ class Project extends Model
     }
 
     /**
-     * Get all orders for this project.
+     * Get all orders for this project (from dynamic per-project table).
      */
     public function orders()
     {
+        if ($this->exists && $this->id) {
+            $tableName = ProjectOrderService::getTableName($this->id);
+            $instance = new Order;
+            $instance->setTable($tableName);
+            return new \Illuminate\Database\Eloquent\Relations\HasMany(
+                $instance->newQuery(), $this, $tableName . '.project_id', 'id'
+            );
+        }
         return $this->hasMany(Order::class);
     }
 
@@ -58,6 +67,22 @@ class Project extends Model
     public function users()
     {
         return $this->hasMany(User::class);
+    }
+
+    /**
+     * Get project managers assigned to this project (M2M pivot).
+     */
+    public function projectManagers()
+    {
+        return $this->belongsToMany(User::class, 'project_manager_projects');
+    }
+
+    /**
+     * Get operation managers assigned to this project (M2M pivot).
+     */
+    public function operationManagers()
+    {
+        return $this->belongsToMany(User::class, 'operation_manager_projects');
     }
 
     /**

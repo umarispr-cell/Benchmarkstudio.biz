@@ -91,7 +91,8 @@ class ChecklistController extends Controller
      */
     public function orderChecklist(Request $request, int $orderId)
     {
-        $order = Order::with('project')->findOrFail($orderId);
+        $order = Order::findOrFailGlobal($orderId);
+        $order->load('project');
         $user = auth()->user();
 
         // Get templates for current layer
@@ -137,7 +138,7 @@ class ChecklistController extends Controller
      */
     public function updateOrderChecklist(Request $request, int $orderId, int $templateId)
     {
-        $order = Order::findOrFail($orderId);
+        $order = Order::findOrFailGlobal($orderId);
         $template = ChecklistTemplate::findOrFail($templateId);
         $user = auth()->user();
 
@@ -173,7 +174,7 @@ class ChecklistController extends Controller
      */
     public function bulkUpdateOrderChecklist(Request $request, int $orderId)
     {
-        $order = Order::findOrFail($orderId);
+        $order = Order::findOrFailGlobal($orderId);
         $user = auth()->user();
 
         $validated = $request->validate([
@@ -211,7 +212,8 @@ class ChecklistController extends Controller
      */
     public function checklistStatus(int $orderId)
     {
-        $order = Order::with('project')->findOrFail($orderId);
+        $order = Order::findOrFailGlobal($orderId);
+        $order->load('project');
 
         $templates = ChecklistTemplate::where('project_id', $order->project_id)
             ->where('layer', $order->current_layer)

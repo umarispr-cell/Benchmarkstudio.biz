@@ -5,12 +5,23 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Team Model
+ * 
+ * Team Hierarchy:
+ * - Each team has exactly 1 QA as the team lead (qa_user_id)
+ * - Team members (checkers, drawers, designers) belong to the team via their team_id
+ * - Floor Plan: QA → multiple Checkers → multiple Drawers
+ * - Photos Enhancement: QA → multiple Designers
+ * - Team size is flexible and scales per project volume
+ */
 class Team extends Model
 {
     use HasFactory;
 
     protected $fillable = [
         'project_id',
+        'qa_user_id',
         'name',
         'qa_count',
         'checker_count',
@@ -36,11 +47,53 @@ class Team extends Model
     }
 
     /**
-     * Get all users in this team.
+     * Get the QA user who leads this team.
+     */
+    public function qaLead()
+    {
+        return $this->belongsTo(User::class, 'qa_user_id');
+    }
+
+    /**
+     * Get all users in this team (excluding QA lead).
      */
     public function users()
     {
         return $this->hasMany(User::class);
+    }
+
+    /**
+     * Get all team members including QA lead.
+     */
+    public function allMembers()
+    {
+        return User::where('team_id', $this->id)
+            ->orWhere('id', $this->qa_user_id)
+            ->get();
+    }
+
+    /**
+     * Get checkers in this team (Floor Plan).
+     */
+    public function checkers()
+    {
+        return $this->hasMany(User::class)->where('role', 'checker');
+    }
+
+    /**
+     * Get drawers in this team (Floor Plan).
+     */
+    public function drawers()
+    {
+        return $this->hasMany(User::class)->where('role', 'drawer');
+    }
+
+    /**
+     * Get designers in this team (Photos Enhancement).
+     */
+    public function designers()
+    {
+        return $this->hasMany(User::class)->where('role', 'designer');
     }
 
     /**
@@ -57,5 +110,19 @@ class Team extends Model
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
+    }
+
+    /**
+     * Get computed team member counts.
+     */
+    public function getMemberCountsAttribute(): array
+    {
+        $users = $this->users;
+        return [
+            'checkers' => $users->where('role', 'checker')->count(),
+            'drawers' => $users->where('role', 'drawer')->count(),
+            'designers' => $users->where('role', 'designer')->count(),
+            'total' => $users->count() + ($this->qa_user_id ? 1 : 0),
+        ];
     }
 }

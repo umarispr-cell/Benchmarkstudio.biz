@@ -36,20 +36,31 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('orders', function (Blueprint $table) {
-            $table->dropColumn('pre_hold_state');
-        });
+        if (Schema::hasColumn('orders', 'pre_hold_state')) {
+            Schema::table('orders', function (Blueprint $table) {
+                $table->dropColumn('pre_hold_state');
+            });
+        }
 
+        // Must drop foreign keys before dropping their underlying indexes
         Schema::table('help_requests', function (Blueprint $table) {
+            $table->dropForeign(['order_id']);
+            $table->dropForeign(['project_id']);
             $table->dropIndex(['order_id']);
             $table->dropIndex(['project_id']);
             $table->dropIndex(['status']);
+            $table->foreign('order_id')->references('id')->on('orders')->cascadeOnDelete();
+            $table->foreign('project_id')->references('id')->on('projects')->cascadeOnDelete();
         });
 
         Schema::table('issue_flags', function (Blueprint $table) {
+            $table->dropForeign(['order_id']);
+            $table->dropForeign(['project_id']);
             $table->dropIndex(['order_id']);
             $table->dropIndex(['project_id']);
             $table->dropIndex(['status']);
+            $table->foreign('order_id')->references('id')->on('orders')->cascadeOnDelete();
+            $table->foreign('project_id')->references('id')->on('projects')->cascadeOnDelete();
         });
 
         Schema::table('users', function (Blueprint $table) {

@@ -5,6 +5,64 @@
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
   }
+
+  /* Global form element styles */
+  .input,
+  .select,
+  .textarea {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    color: #0f172a;
+    transition: all 0.2s ease;
+  }
+
+  .input::placeholder,
+  .textarea::placeholder {
+    color: #94a3b8;
+  }
+
+  .input:hover,
+  .select:hover,
+  .textarea:hover {
+    border-color: #cbd5e1;
+  }
+
+  .input:focus,
+  .select:focus,
+  .textarea:focus {
+    outline: none;
+    background-color: #ffffff;
+    border-color: #2AA7A0;
+    box-shadow: 0 0 0 3px rgba(42, 167, 160, 0.1);
+  }
+
+  .select {
+    appearance: none;
+    cursor: pointer;
+    padding-right: 2.5rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+  }
+
+  .label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+  }
+
+  .textarea {
+    resize: none;
+  }
 }
 
 @theme {
@@ -54,6 +112,17 @@
 }
 
 @layer utilities {
+  /* New-order highlight: light green pulse that fades to transparent */
+  @keyframes newOrderHighlight {
+    0%   { background-color: rgba(34, 197, 94, 0.22); }
+    60%  { background-color: rgba(34, 197, 94, 0.12); }
+    100% { background-color: transparent; }
+  }
+
+  .new-order-highlight {
+    animation: newOrderHighlight 5s ease-out forwards;
+  }
+
   .custom-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: var(--color-slate-200) transparent;

@@ -62,9 +62,9 @@ export default function WorkerSidebar({ workers, selectedWorker, onSelectWorker,
 
         {/* Quick Stats */}
         <div className="grid grid-cols-4 gap-2 mb-3">
-          <div className="text-center p-2 bg-brand-50 rounded-lg">
-            <div className="text-lg font-bold text-brand-600">{onlineCount}</div>
-            <div className="text-[10px] text-brand-600">Online</div>
+          <div className="text-center p-2 bg-green-50 rounded-lg">
+            <div className="text-lg font-bold text-green-600">{onlineCount}</div>
+            <div className="text-[10px] text-green-600">Online</div>
           </div>
           <div className="text-center p-2 bg-rose-50 rounded-lg">
             <div className="text-lg font-bold text-rose-600">{absentCount}</div>
@@ -74,7 +74,7 @@ export default function WorkerSidebar({ workers, selectedWorker, onSelectWorker,
             <div className="text-lg font-bold text-amber-600">{wipCount}</div>
             <div className="text-[10px] text-amber-600">WIP</div>
           </div>
-          <div className="text-center p-2 bg-brand-50 rounded-lg">
+          <div className="text-center p-2 bg-blue-50 rounded-lg">
             <div className="text-lg font-bold text-blue-600">{doneToday}</div>
             <div className="text-[10px] text-blue-600">Done</div>
           </div>
@@ -143,7 +143,7 @@ export default function WorkerSidebar({ workers, selectedWorker, onSelectWorker,
                     {worker.name.charAt(0).toUpperCase()}
                   </div>
                   <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-                    worker.is_absent ? 'bg-rose-500' : worker.wip_count > 0 ? 'bg-amber-500' : 'bg-brand-500'
+                    worker.is_absent ? 'bg-rose-500' : worker.is_online ? 'bg-green-500' : 'bg-amber-500'
                   }`} />
                 </div>
 

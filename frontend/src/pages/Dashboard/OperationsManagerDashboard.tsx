@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { dashboardService } from '../../services';
 import { useSmartPolling } from '../../hooks/useSmartPolling';
 import type { OpsDashboardData, OpsProjectItem } from '../../types';
 import { AnimatedPage, PageHeader, StatCard, StatusBadge, OpsManagerDashboardSkeleton } from '../../components/ui';
-import { Users, AlertTriangle, Package, TrendingUp, ChevronRight, ChevronDown, Pencil, CheckSquare, Eye, Palette, Calendar, Shield, LayoutDashboard, Briefcase, UserCheck } from 'lucide-react';
+import { Users, AlertTriangle, Package, TrendingUp, ChevronRight, ChevronDown, Pencil, CheckSquare, Eye, Palette, Calendar, Shield, LayoutDashboard, Briefcase, UserCheck, Search, Target, Timer, Info } from 'lucide-react';
 import DailyOperationsView from './DailyOperationsView';
 
 type OMTab = 'overview' | 'projects' | 'staff' | 'daily-operations';
@@ -13,6 +13,9 @@ export default function OperationsManagerDashboard() {
   const [loading, setLoading] = useState(true);
   const [expandedProject, setExpandedProject] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<OMTab>('overview');
+  const [staffSearch, setStaffSearch] = useState('');
+  const [staffRoleFilter, setStaffRoleFilter] = useState<string>('all');
+  const [expandedStaff, setExpandedStaff] = useState<number | null>(null);
 
   const loadData = async () => {
     try {
@@ -213,13 +216,13 @@ export default function OperationsManagerDashboard() {
                         </thead>
                         <tbody>
                           {activeRoles.map(role => {
-                            const total = data.date_stats!.reduce((sum, d) => sum + (d.by_role[role] || 0), 0);
+                            const total = data.date_stats!.reduce((sum, d) => sum + ((d.by_role || {})[role] || 0), 0);
                             return (
                               <tr key={role} className="border-t border-slate-50">
                                 <td className="py-2 pr-4 font-medium text-slate-700 capitalize">{role}</td>
                                 {data.date_stats!.map(day => (
                                   <td key={day.date} className="text-center px-2 py-2 text-slate-600">
-                                    {day.by_role[role] || 0}
+                                    {(day.by_role || {})[role] || 0}
                                   </td>
                                 ))}
                                 <td className="text-center px-2 py-2 font-bold text-slate-900">{total}</td>
@@ -397,7 +400,7 @@ export default function OperationsManagerDashboard() {
                             {item.queue_health.staffing.map((s: NonNullable<OpsProjectItem['queue_health']>['staffing'][number]) => (
                               <div key={s.id} className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg text-sm">
                                 <div className="flex items-center gap-2">
-                                  <span className={`w-2 h-2 rounded-full ${s.is_absent ? 'bg-rose-500' : s.is_online ? 'bg-brand-500' : 'bg-slate-300'}`} />
+                                  <span className={`w-2 h-2 rounded-full ${s.is_absent ? 'bg-rose-500' : s.is_online ? 'bg-green-500' : 'bg-amber-500'}`} />
                                   <span className="font-medium text-slate-700">{s.name}</span>
                                   <span className="text-xs text-slate-400 capitalize">{s.role}</span>
                                 </div>
@@ -419,68 +422,308 @@ export default function OperationsManagerDashboard() {
           )}
 
           {/* Staff Tab */}
-          {activeTab === 'staff' && (
+          {activeTab === 'staff' && (() => {
+            const workers = data.workers || [];
+            const searchLower = staffSearch.toLowerCase();
+            const filteredWorkers = workers.filter(w => {
+              if (staffRoleFilter !== 'all' && w.role !== staffRoleFilter) return false;
+              if (searchLower && !w.name.toLowerCase().includes(searchLower) && !w.email.toLowerCase().includes(searchLower)) return false;
+              return true;
+            });
+            const roleColors: Record<string, { bg: string; text: string }> = {
+              drawer:   { bg: 'bg-blue-50',    text: 'text-blue-700' },
+              checker:  { bg: 'bg-violet-50',  text: 'text-violet-700' },
+              qa:       { bg: 'bg-emerald-50', text: 'text-emerald-700' },
+              designer: { bg: 'bg-pink-50',    text: 'text-pink-700' },
+            };
+            return (
             <>
-              {/* Staff Report */}
-              {data.workers && data.workers.length > 0 && (
+              {/* Role Filter Pills + Search */}
+              <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                <div className="flex flex-wrap gap-2 flex-1">
+                  <button
+                    onClick={() => setStaffRoleFilter('all')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                      staffRoleFilter === 'all' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    All ({workers.length})
+                  </button>
+                  {activeRoles.map((role) => {
+                    const RIcon = roleIcons[role] || Users;
+                    const colors = roleColors[role] || { bg: 'bg-slate-100', text: 'text-slate-700' };
+                    const count = workers.filter(w => w.role === role).length;
+                    return (
+                      <button
+                        key={role}
+                        onClick={() => setStaffRoleFilter(role)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                          staffRoleFilter === role ? `${colors.bg} ${colors.text} ring-2 ring-offset-1 ring-current shadow-sm` : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        <RIcon className="h-3 w-3" />
+                        {role.charAt(0).toUpperCase() + role.slice(1)}s ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="relative w-full sm:w-64 flex-shrink-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={staffSearch}
+                    onChange={e => setStaffSearch(e.target.value)}
+                    placeholder="Search by name..."
+                    className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Role Summary Cards */}
+              {data.role_stats && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  {(staffRoleFilter === 'all' ? activeRoles : [staffRoleFilter]).map((role) => {
+                    const stats = data.role_stats?.[role];
+                    if (!stats) return null;
+                    const RIcon = roleIcons[role] || Users;
+                    const colors = roleColors[role] || { bg: 'bg-slate-50', text: 'text-slate-700' };
+                    return (
+                      <div key={role} className={`rounded-xl p-4 ${colors.bg} ring-1 ring-black/[0.04]`}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <RIcon className={`h-4 w-4 ${colors.text}`} />
+                          <span className={`text-sm font-semibold ${colors.text}`}>{role.charAt(0).toUpperCase() + role.slice(1)}s</span>
+                          <span className="ml-auto text-lg font-bold text-slate-900">{stats.total_staff}</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div>
+                            <span className="text-slate-500">Online</span>
+                            <div className="font-semibold text-emerald-600">{stats.active}</div>
+                          </div>
+                          <div>
+                            <span className="text-slate-500">Absent</span>
+                            <div className="font-semibold text-red-500">{stats.absent}</div>
+                          </div>
+                          <div>
+                            <span className="text-slate-500">Done Today</span>
+                            <div className="font-semibold text-emerald-600">{stats.today_completed}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Staff Report Table */}
+              {workers.length > 0 && (
                 <div className="bg-white rounded-xl ring-1 ring-black/[0.04] overflow-hidden mb-6">
-                  <div className="px-5 py-3 border-b border-slate-100">
-                    <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-slate-400" /> Staff Report
-                      <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{data.workers.length}</span>
+                  <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
+                    <Users className="h-4 w-4 text-slate-400" />
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      {staffRoleFilter === 'all' ? 'All Staff' : `${staffRoleFilter.charAt(0).toUpperCase() + staffRoleFilter.slice(1)}s`}
                     </h3>
+                    <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{filteredWorkers.length}</span>
+                    <span className="text-xs text-slate-400 ml-1">Click a row to expand details</span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-slate-50/80 text-xs text-slate-500 uppercase">
-                          <th className="text-left py-2.5 px-4">Name</th>
-                          <th className="text-left py-2.5 px-4">Role</th>
-                          <th className="text-center py-2.5 px-4">Status</th>
-                          <th className="text-center py-2.5 px-4">Assigned</th>
-                          <th className="text-center py-2.5 px-4">Completed</th>
-                          <th className="text-center py-2.5 px-4">Pending</th>
-                          <th className="text-center py-2.5 px-4">WIP</th>
-                          <th className="text-center py-2.5 px-4">Score</th>
+                          <th className="px-3 py-3 text-left w-6"></th>
+                          <th className="px-3 py-3 text-left">Name</th>
+                          <th className="px-3 py-3 text-left">Role</th>
+                          <th className="px-3 py-3 text-left">Team</th>
+                          <th className="px-3 py-3 text-center">Status</th>
+                          <th className="px-3 py-3 text-center" title="Total orders currently assigned">Assigned</th>
+                          <th className="px-3 py-3 text-center" title="Assigned but not yet started">Pending</th>
+                          <th className="px-3 py-3 text-center" title="Currently working on">WIP</th>
+                          <th className="px-3 py-3 text-center" title="Completed today">Done Today</th>
+                          <th className="px-3 py-3 text-center" title="Completed this week">Week</th>
+                          <th className="px-3 py-3 text-center" title="Completed this month">Month</th>
+                          <th className="px-3 py-3 text-center" title="Daily target progress">Target</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {data.workers?.map((w) => (
-                          <tr key={w.id} className="hover:bg-slate-50/50">
-                            <td className="py-2.5 px-4">
-                              <div className="flex items-center gap-2">
-                                <span className={`w-2 h-2 rounded-full ${w.is_absent ? 'bg-rose-400' : w.is_online ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                                <span className="font-medium text-slate-900">{w.name}</span>
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-4 capitalize text-slate-600">{w.role}</td>
-                            <td className="py-2.5 px-4 text-center">
-                              {w.is_absent ? (
-                                <span className="text-xs text-rose-600">Absent</span>
-                              ) : w.is_online ? (
-                                <span className="text-xs text-emerald-600">Online</span>
-                              ) : (
-                                <span className="text-xs text-slate-400">Offline</span>
+                        {filteredWorkers.map((w) => {
+                          const RoleIcon = roleIcons[w.role] || Users;
+                          const colors = roleColors[w.role] || { bg: 'bg-slate-50', text: 'text-slate-700' };
+                          const isExpanded = expandedStaff === w.id;
+                          const targetPct = (w.daily_target ?? 0) > 0 ? Math.round((w.today_completed / w.daily_target!) * 100) : null;
+                          return (
+                            <React.Fragment key={w.id}>
+                              <tr
+                                onClick={() => setExpandedStaff(isExpanded ? null : w.id)}
+                                className="hover:bg-slate-50/50 transition-colors cursor-pointer"
+                              >
+                                <td className="pl-3 py-3">
+                                  {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-slate-400" /> : <ChevronRight className="h-3.5 w-3.5 text-slate-400" />}
+                                </td>
+                                <td className="px-3 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${w.is_absent ? 'bg-rose-500' : w.is_online ? 'bg-green-500' : 'bg-amber-500'}`} />
+                                    <span className="font-medium text-slate-900">{w.name}</span>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}>
+                                    <RoleIcon className="h-3 w-3" />
+                                    {w.role}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <span className="text-xs text-slate-600">{w.team_name || '—'}</span>
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                  {w.is_absent ? (
+                                    <span className="inline-flex items-center gap-1 text-xs text-red-600">
+                                      <AlertTriangle className="h-3 w-3" /> Absent
+                                    </span>
+                                  ) : w.is_online ? (
+                                    <span className="text-xs text-green-600 font-medium">Online</span>
+                                  ) : (
+                                    <span className="text-xs text-amber-500">Offline</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                  <span className={`text-sm font-bold ${(w.assigned_work ?? 0) > 0 ? 'text-blue-600' : 'text-slate-300'}`}>{w.assigned_work ?? 0}</span>
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                  <span className={`text-sm font-bold ${(w.pending_work ?? 0) > 0 ? 'text-amber-600' : 'text-slate-300'}`}>{w.pending_work ?? 0}</span>
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                  <span className={`text-sm font-bold ${w.wip_count > 0 ? 'text-indigo-600' : 'text-slate-300'}`}>{w.wip_count}</span>
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                  <span className={`text-sm font-bold ${w.today_completed > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>{w.today_completed}</span>
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                  <span className={`text-sm font-semibold ${(w.completed_week ?? 0) > 0 ? 'text-violet-600' : 'text-slate-300'}`}>{w.completed_week ?? 0}</span>
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                  <span className={`text-sm font-semibold ${(w.completed_month ?? 0) > 0 ? 'text-teal-600' : 'text-slate-300'}`}>{w.completed_month ?? 0}</span>
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                  {(w.daily_target ?? 0) > 0 ? (
+                                    <div className="flex flex-col items-center gap-0.5">
+                                      <span className={`text-xs font-bold ${targetPct !== null && targetPct >= 100 ? 'text-emerald-600' : targetPct !== null && targetPct >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                                        {w.today_completed}/{w.daily_target}
+                                      </span>
+                                      <div className="w-12 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full transition-all ${targetPct !== null && targetPct >= 100 ? 'bg-emerald-500' : targetPct !== null && targetPct >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                                          style={{ width: `${Math.min(targetPct || 0, 100)}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-slate-300">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                              {/* Expanded Detail Row */}
+                              {isExpanded && (
+                                <tr className="bg-slate-50/60">
+                                  <td colSpan={12} className="px-6 py-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                      {/* Workload Breakdown */}
+                                      <div className="bg-white rounded-lg p-3 ring-1 ring-black/[0.04]">
+                                        <div className="text-[10px] text-slate-500 uppercase font-semibold mb-2">Workload</div>
+                                        <div className="space-y-1.5">
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs text-slate-500">Assigned</span>
+                                            <span className="text-sm font-bold text-blue-600">{w.assigned_work ?? 0}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs text-slate-500">Pending</span>
+                                            <span className="text-sm font-bold text-amber-600">{w.pending_work ?? 0}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs text-slate-500">In Progress</span>
+                                            <span className="text-sm font-bold text-indigo-600">{w.wip_count}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Completions */}
+                                      <div className="bg-white rounded-lg p-3 ring-1 ring-black/[0.04]">
+                                        <div className="text-[10px] text-slate-500 uppercase font-semibold mb-2">Completions</div>
+                                        <div className="space-y-1.5">
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs text-slate-500">Today</span>
+                                            <span className="text-sm font-bold text-emerald-600">{w.today_completed}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs text-slate-500">This Week</span>
+                                            <span className="text-sm font-bold text-violet-600">{w.completed_week ?? 0}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs text-slate-500">This Month</span>
+                                            <span className="text-sm font-bold text-teal-600">{w.completed_month ?? 0}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Avg Time */}
+                                      <div className="bg-white rounded-lg p-3 ring-1 ring-black/[0.04]">
+                                        <div className="flex items-center gap-1.5 mb-2">
+                                          <Timer className="h-3.5 w-3.5 text-blue-500" />
+                                          <div className="text-[10px] text-slate-500 uppercase font-semibold">Avg Time</div>
+                                        </div>
+                                        <div className="text-lg font-bold text-slate-900">
+                                          {(w.avg_completion_minutes ?? 0) > 0 ? `${w.avg_completion_minutes} min` : '—'}
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">per order</div>
+                                      </div>
+
+                                      {/* Daily Target */}
+                                      <div className="bg-white rounded-lg p-3 ring-1 ring-black/[0.04]">
+                                        <div className="flex items-center gap-1.5 mb-2">
+                                          <Target className="h-3.5 w-3.5 text-amber-500" />
+                                          <div className="text-[10px] text-slate-500 uppercase font-semibold">Daily Target</div>
+                                        </div>
+                                        {(w.daily_target ?? 0) > 0 ? (
+                                          <>
+                                            <div className="text-lg font-bold text-slate-900">{w.today_completed} <span className="text-slate-400 text-sm font-normal">/ {w.daily_target}</span></div>
+                                            <div className="w-full h-2 bg-slate-100 rounded-full mt-2 overflow-hidden">
+                                              <div
+                                                className={`h-full rounded-full transition-all ${targetPct !== null && targetPct >= 100 ? 'bg-emerald-500' : targetPct !== null && targetPct >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                                                style={{ width: `${Math.min(targetPct || 0, 100)}%` }}
+                                              />
+                                            </div>
+                                            <div className={`text-xs font-semibold mt-1 ${targetPct !== null && targetPct >= 100 ? 'text-emerald-600' : targetPct !== null && targetPct >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                                              {targetPct}% achieved
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <div className="text-lg font-bold text-slate-300">—</div>
+                                        )}
+                                      </div>
+
+                                      {/* Info */}
+                                      <div className="bg-white rounded-lg p-3 ring-1 ring-black/[0.04]">
+                                        <div className="flex items-center gap-1.5 mb-2">
+                                          <Info className="h-3.5 w-3.5 text-slate-400" />
+                                          <div className="text-[10px] text-slate-500 uppercase font-semibold">Info</div>
+                                        </div>
+                                        <div className="text-xs text-slate-600 truncate" title={w.email}>{w.email}</div>
+                                        <div className="text-xs text-slate-400 mt-1">Project: {w.project_name || '—'}</div>
+                                        <div className="text-xs text-slate-400 mt-0.5">Team: {w.team_name || '—'}</div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
                               )}
-                            </td>
-                            <td className="py-2.5 px-4 text-center font-semibold text-blue-600">{w.assigned_work ?? w.wip_count}</td>
-                            <td className="py-2.5 px-4 text-center font-semibold text-emerald-600">{w.today_completed}</td>
-                            <td className="py-2.5 px-4 text-center font-semibold text-amber-600">{w.pending_work ?? w.wip_count}</td>
-                            <td className="py-2.5 px-4 text-center font-semibold text-slate-700">{w.wip_count}</td>
-                            <td className="py-2.5 px-4 text-center">
-                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                                (w.assignment_score ?? 0) >= 0.7 ? 'bg-emerald-50 text-emerald-700' :
-                                (w.assignment_score ?? 0) >= 0.4 ? 'bg-amber-50 text-amber-700' :
-                                'bg-slate-100 text-slate-500'
-                              }`}>
-                                {((w.assignment_score ?? 0) * 100).toFixed(0)}%
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                            </React.Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
+                  {filteredWorkers.length === 0 && (
+                    <div className="text-center py-8 text-slate-500">
+                      {staffSearch ? `No staff found matching "${staffSearch}"` : 'No staff members found.'}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -489,6 +732,7 @@ export default function OperationsManagerDashboard() {
                 <div className="bg-white rounded-xl ring-1 ring-black/[0.04] p-5">
                   <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
                     <AlertTriangle className="h-4 w-4 text-rose-400" /> Absent Staff
+                    <span className="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full font-medium">{data.absentees!.length}</span>
                   </h3>
                   <div className="space-y-2">
                     {data.absentees!.map((a) => (
@@ -507,7 +751,8 @@ export default function OperationsManagerDashboard() {
                 </div>
               )}
             </>
-          )}
+            );
+          })()}
         </div>
       </div>
     </AnimatedPage>

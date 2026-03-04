@@ -4,7 +4,7 @@ import type {
   Project, ProjectInput, Team,
   Order, WorkItem, MonthLock, Invoice, InvoiceInput,
   MasterDashboard, ProjectDashboard, WorkerDashboardData, OpsDashboardData, QueueHealth,
-  DailyOperationsData,
+  DailyOperationsData, PMDashboardData, AssignmentDashboardData,
   PaginatedResponse, Notification,
   OrderImportSource, OrderImportLog, ChecklistTemplate, OrderChecklist,
   WorkflowState, InvoiceStatus,
@@ -113,8 +113,28 @@ export const workflowService = {
     api.post<{ order: Order }>('/workflow/receive', data),
 
   // Management: Reassign order
-  reassignOrder: (orderId: number, userId: number | null, reason: string) =>
-    api.post<{ order: Order }>(`/workflow/orders/${orderId}/reassign`, { user_id: userId, reason }),
+  reassignOrder: (orderId: number, userId: number | null, reason: string, projectId?: number) =>
+    api.post<{ order: Order }>(`/workflow/orders/${orderId}/reassign`, { user_id: userId, reason, ...(projectId ? { project_id: projectId } : {}) }),
+
+  // PM: Assign order to QA supervisor
+  assignToQA: (orderId: number, qaUserId: number, projectId?: number) =>
+    api.post<{ order: Order; message: string }>(`/workflow/orders/${orderId}/assign-to-qa`, { qa_user_id: qaUserId, ...(projectId ? { project_id: projectId } : {}) }),
+
+  // QA: Assign order to drawer in team
+  assignToDrawer: (orderId: number, drawerUserId: number, projectId?: number) =>
+    api.post<{ order: Order; message: string }>(`/workflow/orders/${orderId}/assign-to-drawer`, { drawer_user_id: drawerUserId, ...(projectId ? { project_id: projectId } : {}) }),
+
+  // PM: Assign role (drawer/checker/qa) to an order
+  assignRole: (orderId: number, role: string, userId: number, projectId?: number) =>
+    api.post<{ order: Order; message: string }>(`/workflow/orders/${orderId}/assign-role`, { role, user_id: userId, ...(projectId ? { project_id: projectId } : {}) }),
+
+  // QA: Get orders assigned to QA supervisor for team distribution
+  qaOrders: () =>
+    api.get<{ orders: Order[]; pending_assignment: number; in_progress: number }>('/workflow/qa-orders'),
+
+  // QA: Get team members (drawers and checkers) for assignment
+  qaTeamMembers: () =>
+    api.get<{ drawers: User[]; checkers: User[]; total: number }>('/workflow/qa-team-members'),
 
   // Management: Queue health
   queueHealth: (projectId: number) =>
@@ -127,6 +147,10 @@ export const workflowService = {
   // Management: Project orders
   projectOrders: (projectId: number, filters?: { state?: WorkflowState; priority?: string }) =>
     api.get<PaginatedResponse<Order>>(`/workflow/${projectId}/orders`, { params: filters }),
+
+  // Smart Polling: Lightweight change detection
+  checkUpdates: (params: { project_ids?: number[]; scope?: 'orders' | 'users' | 'all'; last_hash?: string }) =>
+    api.get<{ hash: string; changed: boolean; server_time: string }>('/workflow/check-updates', { params }),
 };
 
 // ═══════════════════════════════════════════
@@ -142,6 +166,9 @@ export const dashboardService = {
   // Ops Manager
   operations: () => api.get<OpsDashboardData>('/dashboard/operations'),
 
+  // Project Manager
+  projectManager: () => api.get<PMDashboardData>('/dashboard/project-manager'),
+
   // Worker personal
   worker: () => api.get<WorkerDashboardData>('/dashboard/worker'),
 
@@ -149,8 +176,16 @@ export const dashboardService = {
   absentees: () => api.get<{ absentees: User[] }>('/dashboard/absentees'),
 
   // CEO: Daily Operations - All projects with layer-wise worker activity
-  dailyOperations: (date?: string) =>
-    api.get<DailyOperationsData>('/dashboard/daily-operations', { params: date ? { date } : {} }),
+  dailyOperations: (date?: string, viewMode?: string) =>
+    api.get<DailyOperationsData>('/dashboard/daily-operations', { params: { ...(date ? { date } : {}), ...(viewMode ? { view_mode: viewMode } : {}) } }),
+
+  // Queues list — returns distinct queue names with their projects
+  queues: () => api.get<{ queues: import('../types').QueueInfo[] }>('/dashboard/queues'),
+
+  // Assignment Dashboard — queue-based view combining orders from all projects in a queue
+  assignmentDashboard: (queueName: string, params?: {
+    status?: string; date?: string; search?: string; assigned_to?: number; page?: number; per_page?: number;
+  }) => api.get<AssignmentDashboardData>(`/dashboard/assignment/${encodeURIComponent(queueName)}`, { params }),
 };
 
 // ═══════════════════════════════════════════
@@ -205,6 +240,8 @@ export const projectService = {
   delete: (id: number) => api.delete(`/projects/${id}`),
   statistics: (id: number) => api.get(`/projects/${id}/statistics`),
   teams: (id: number) => api.get<{ data: Team[] }>(`/projects/${id}/teams`),
+  createTeam: (projectId: number, name: string) => api.post<{ data: Team; message: string }>(`/projects/${projectId}/teams`, { name }),
+  deleteTeam: (projectId: number, teamId: number) => api.delete(`/projects/${projectId}/teams/${teamId}`),
 };
 
 // ═══════════════════════════════════════════
@@ -223,6 +260,24 @@ export const userService = {
   inactive: () => api.get<{ data: User[] }>('/users-inactive'),
   reassignWork: (userId: number) =>
     api.post('/users/reassign-work', { user_id: userId }),
+};
+
+// ═══════════════════════════════════════════
+// PROJECT MANAGER ASSIGNMENT SERVICE
+// ═══════════════════════════════════════════
+export const pmService = {
+  list: () => api.get<any[]>('/project-managers'),
+  assignProjects: (userId: number, projectIds: number[]) =>
+    api.post(`/project-managers/${userId}/assign-projects`, { project_ids: projectIds }),
+};
+
+// ═══════════════════════════════════════════
+// OPERATION MANAGER ASSIGNMENT SERVICE
+// ═══════════════════════════════════════════
+export const omService = {
+  list: () => api.get<any[]>('/operation-managers'),
+  assignProjects: (userId: number, projectIds: number[]) =>
+    api.post(`/operation-managers/${userId}/assign-projects`, { project_ids: projectIds }),
 };
 
 // ═══════════════════════════════════════════
@@ -283,4 +338,71 @@ export const notificationService = {
     api.post('/notifications/read-all'),
   destroy: (id: number) =>
     api.delete(`/notifications/${id}`),
+};
+
+// ═══════════════════════════════════════════
+// AUDIT LOG SERVICE (Transfer/Assignment Logs)
+// ═══════════════════════════════════════════
+export interface AuditLogEntry {
+  id: number;
+  user_id: number;
+  action: string;
+  model_type: string | null;
+  model_id: number | null;
+  project_id: number | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+  user?: { id: number; name: string; email: string; role: string };
+}
+
+export const auditLogService = {
+  list: (params: { page?: number; action?: string; user_id?: number; project_id?: number } = {}) =>
+    api.get<PaginatedResponse<AuditLogEntry>>('/audit-logs', { params }),
+  transferLogs: (params: { page?: number; user_id?: number; project_id?: number } = {}) =>
+    api.get<PaginatedResponse<AuditLogEntry>>('/audit-logs', {
+      params: {
+        ...params,
+        action: 'PM_PROJECT_ASSIGNED,OM_PROJECT_ASSIGNED,RESOURCE_PROJECT_SWITCH,ORDER_REASSIGNED,QA_ASSIGNED',
+      },
+    }),
+};
+
+// ═══════════════════════════════════════════
+// LIVE QA SERVICE
+// ═══════════════════════════════════════════
+export const liveQAService = {
+  // Overview: unified table of all orders with D-LiveQA + C-LiveQA status
+  getOverview: (projectId: number, params: Record<string, any> = {}) =>
+    api.get(`/live-qa/overview/${projectId}`, { params }),
+
+  // Orders by layer (drawer/checker/qa) – legacy
+  getOrders: (projectId: number, params: Record<string, any> = {}) =>
+    api.get(`/live-qa/orders/${projectId}`, { params }),
+
+  // Checklist CRUD
+  getChecklists: () =>
+    api.get('/live-qa/checklists'),
+  createChecklist: (data: { title: string; check_list_type_id: number; client?: string; product?: string }) =>
+    api.post('/live-qa/checklists', data),
+  updateChecklist: (id: number, data: Record<string, any>) =>
+    api.put(`/live-qa/checklists/${id}`, data),
+  deleteChecklist: (id: number) =>
+    api.delete(`/live-qa/checklists/${id}`),
+
+  // Review per order
+  getReview: (projectId: number, orderNumber: string, layer: string) =>
+    api.get(`/live-qa/review/${projectId}/${orderNumber}/${layer}`),
+  submitReview: (projectId: number, orderNumber: string, layer: string, data: { items: any[] }) =>
+    api.post(`/live-qa/review/${projectId}/${orderNumber}/${layer}`, data),
+
+  // Stats
+  getStats: (projectId: number, layer?: string) =>
+    api.get(`/live-qa/stats/${projectId}`, { params: { layer } }),
+
+  // Mistake summary reports
+  getMistakeSummary: (projectId: number, layer: string, params: Record<string, any> = {}) =>
+    api.get(`/live-qa/mistake-summary/${projectId}/${layer}`, { params }),
 };

@@ -3,8 +3,8 @@ import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/store';
 import { workflowService, projectService } from '../../services';
 import type { Order } from '../../types';
-import { AnimatedPage, PageHeader, StatusBadge, Modal, Button, DataTable, FilterBar } from '../../components/ui';
-import { Package, RefreshCw, Eye } from 'lucide-react';
+import { AnimatedPage, PageHeader, StatusBadge, Button, DataTable, FilterBar } from '../../components/ui';
+import { Package, RefreshCw } from 'lucide-react';
 
 export default function WorkQueue() {
   const { user } = useSelector((state: RootState) => state.auth);
@@ -13,11 +13,50 @@ export default function WorkQueue() {
   const [selectedState, setSelectedState] = useState<string>('all');
   const [selectedPriority, setSelectedPriority] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [showDetail, setShowDetail] = useState<Order | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
   const [selectedProject, setSelectedProject] = useState<number | null>(null);
 
-  const isManager = ['ceo', 'director', 'operations_manager'].includes(user?.role || '');
+  const isManager = ['ceo', 'director', 'operations_manager', 'project_manager'].includes(user?.role || '');
+  const isWorker = ['drawer', 'checker', 'qa', 'designer'].includes(user?.role || '');
+
+  /* ── Countdown tick (every 30s) ── */
+  const [, setCountdownTick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => setCountdownTick(t => t + 1), 30_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  /** Parse due_in → ms remaining */
+  const parseDueIn = (raw: string | null | undefined, receivedAt?: string | null): number | null => {
+    const getPkNow = () => {
+      const pkStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
+      return new Date(pkStr).getTime();
+    };
+    if (raw) {
+      let d = new Date(raw);
+      if (isNaN(d.getTime())) {
+        const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+        if (m) d = new Date(+m[3], +m[1] - 1, +m[2], +m[4], +m[5], +m[6]);
+      }
+      if (!isNaN(d.getTime())) return d.getTime() - getPkNow();
+    }
+    if (receivedAt) {
+      const rd = new Date(receivedAt);
+      if (!isNaN(rd.getTime())) return (rd.getTime() + 24 * 3600_000) - getPkNow();
+    }
+    return null;
+  };
+
+  const fmtCountdown = (ms: number) => {
+    const overdue = ms < 0;
+    const absTotalMin = Math.floor(Math.abs(ms) / 60000);
+    const hrs = Math.floor(absTotalMin / 60);
+    const mins = absTotalMin % 60;
+    const label = overdue
+      ? (hrs > 0 ? `-${hrs}h ${mins}m` : `-${mins}m`)
+      : (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`);
+    return { label, overdue, hrs };
+  };
 
   useEffect(() => {
     if (isManager) {
@@ -33,24 +72,40 @@ export default function WorkQueue() {
   }, [user]);
 
   useEffect(() => {
-    if (selectedProject) loadOrders();
+    if (isWorker) {
+      loadOrders();
+    } else if (selectedProject) {
+      loadOrders();
+    }
   }, [selectedProject, selectedState, selectedPriority]);
 
   const loadOrders = async () => {
-    if (!selectedProject) return;
     try {
       setLoading(true);
-      const params: any = {};
-      if (selectedState !== 'all') params.state = selectedState;
-      if (selectedPriority !== 'all') params.priority = selectedPriority;
-      const res = await workflowService.projectOrders(selectedProject, params);
-      const d = res.data?.data || res.data;
-      setOrders(Array.isArray(d) ? d : []);
+      if (isWorker) {
+        // Workers use /workflow/my-queue — returns only their assigned orders
+        const res = await workflowService.getQueue();
+        const d = res.data?.orders || res.data?.data || res.data;
+        let list = Array.isArray(d) ? d : [];
+        // Client-side filtering for workers
+        if (selectedState !== 'all') list = list.filter(o => o.workflow_state === selectedState);
+        if (selectedPriority !== 'all') list = list.filter(o => o.priority === selectedPriority);
+        setOrders(list);
+      } else {
+        // Managers use /workflow/{projectId}/orders — returns all project orders
+        if (!selectedProject) return;
+        const params: any = {};
+        if (selectedState !== 'all') params.state = selectedState;
+        if (selectedPriority !== 'all') params.priority = selectedPriority;
+        const res = await workflowService.projectOrders(selectedProject, params);
+        const d = res.data?.data || res.data;
+        setOrders(Array.isArray(d) ? d : []);
+      }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
-  if (!selectedProject && !isManager) {
+  if (!selectedProject && !isManager && !isWorker) {
     return (
       <AnimatedPage>
         <PageHeader title="Work Queue" subtitle="View project orders and workflow states" />
@@ -96,11 +151,11 @@ export default function WorkQueue() {
       <FilterBar searchValue={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Search orders..."
         filters={<>
           {isManager && projects.length > 1 && (
-            <select value={selectedProject || ''} onChange={e => setSelectedProject(Number(e.target.value))} className="select text-sm">
+            <select value={selectedProject || ''} onChange={e => setSelectedProject(Number(e.target.value))} aria-label="Select project" className="select text-sm">
               {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           )}
-          <select value={selectedPriority} onChange={e => setSelectedPriority(e.target.value)} className="select text-sm">
+          <select value={selectedPriority} onChange={e => setSelectedPriority(e.target.value)} aria-label="Filter by priority" className="select text-sm">
             <option value="all">All Priorities</option>
             <option value="urgent">Urgent</option><option value="high">High</option>
             <option value="normal">Normal</option><option value="low">Low</option>
@@ -111,72 +166,39 @@ export default function WorkQueue() {
       {/* Orders table */}
       <div className="mt-4">
         <DataTable
-          data={filtered} loading={loading}
+          data={[...filtered].sort((a, b) => {
+            const pw: Record<string, number> = { rush: 0, urgent: 0, high: 1, normal: 2, low: 3 };
+            return (pw[a.priority] ?? 2) - (pw[b.priority] ?? 2);
+          })} loading={loading}
           columns={[
             { key: 'order_number', label: 'Order #', sortable: true, render: (o) => (
               <div>
-                <div className="font-semibold text-slate-900">{o.order_number}</div>
-                <div className="text-xs text-slate-400">{o.client_reference}</div>
+                <div className="font-semibold text-slate-400">••••••</div>
               </div>
             )},
-            { key: 'workflow_state', label: 'State', render: (o) => <StatusBadge status={o.workflow_state} /> },
-            { key: 'priority', label: 'Priority', render: (o) => <StatusBadge status={o.priority} size="xs" /> },
-            { key: 'assigned', label: 'Assigned To', render: (o) => (
-              <span className="text-sm text-slate-500">{o.assignedUser?.name || <span className="text-slate-300">Unassigned</span>}</span>
+            { key: 'address', label: 'Address', render: (o) => (
+              <div className="text-xs text-slate-400">••••••</div>
             )},
+            { key: 'priority', label: 'Priority', render: (o) => <StatusBadge status={o.priority} size="xs" /> },
+            { key: 'workflow_state', label: 'State', render: (o) => <StatusBadge status={o.workflow_state} /> },
             { key: 'recheck', label: 'Rechecks', sortable: true, render: (o) => (
               o.recheck_count > 0 ? <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded">{o.recheck_count}</span> : <span className="text-slate-300">0</span>
             )},
             { key: 'hold', label: 'Hold', render: (o) => o.is_on_hold ? <StatusBadge status="on_hold" size="xs" /> : null },
-            { key: 'received', label: 'Received', sortable: true, render: (o) => (
-              <span className="text-xs text-slate-400">{new Date(o.received_at || o.created_at).toLocaleDateString()}</span>
-            )},
-            { key: 'actions', label: '', render: (o) => (
-              <Button variant="ghost" size="xs" onClick={() => setShowDetail(o)}><Eye className="w-3.5 h-3.5" /></Button>
-            )},
+            { key: 'due_in', label: 'Due In', render: (o) => {
+              if (o.workflow_state?.includes('COMPLETE') || o.workflow_state?.includes('DELIVER')) return <span className="text-xs text-slate-400">—</span>;
+              const ms = parseDueIn((o as any).due_in, o.received_at);
+              if (ms === null) return <span className="text-xs text-slate-400">—</span>;
+              const { label, overdue, hrs } = fmtCountdown(ms);
+              const cls = overdue ? 'text-red-600 bg-red-50' : hrs < 1 ? 'text-orange-600 bg-orange-50' : hrs < 4 ? 'text-yellow-600 bg-yellow-50' : 'text-green-600 bg-green-50';
+              return <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${cls}`}>{label}</span>;
+            }},
           ]}
           emptyIcon={Package}
           emptyTitle="No orders found"
           emptyDescription="No orders match the current filters."
         />
       </div>
-
-      {/* Detail Modal */}
-      <Modal open={!!showDetail} onClose={() => setShowDetail(null)} title={`Order ${showDetail?.order_number}`} size="lg">
-        {showDetail && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'State', value: <StatusBadge status={showDetail.workflow_state} /> },
-                { label: 'Priority', value: <StatusBadge status={showDetail.priority} size="xs" /> },
-                { label: 'Client Ref', value: showDetail.client_reference },
-                { label: 'Assigned To', value: showDetail.assignedUser?.name || 'Unassigned' },
-                { label: 'Rechecks', value: showDetail.recheck_count },
-                { label: 'Draw Attempts', value: showDetail.attempt_draw },
-                { label: 'Check Attempts', value: showDetail.attempt_check },
-                { label: 'QA Attempts', value: showDetail.attempt_qa },
-                { label: 'On Hold', value: showDetail.is_on_hold ? 'Yes' : 'No' },
-                { label: 'Hold Reason', value: showDetail.hold_reason || '—' },
-              ].map((item, i) => (
-                <div key={i} className="flex justify-between items-center py-2 border-b border-slate-100">
-                  <span className="text-sm text-slate-500">{item.label}</span>
-                  <span className="text-sm font-medium text-slate-900">{item.value}</span>
-                </div>
-              ))}
-            </div>
-
-            {showDetail.rejection_reason && (
-              <div className="bg-rose-50 rounded-lg p-3">
-                <div className="text-xs font-medium text-rose-600 mb-1">Last Rejection</div>
-                <div className="text-sm text-rose-700">{showDetail.rejection_reason}</div>
-                <div className="text-xs text-rose-400 mt-1">Type: {showDetail.rejection_type} &middot; {showDetail.rejected_at ? new Date(showDetail.rejected_at).toLocaleString() : ''}</div>
-              </div>
-            )}
-
-            <Button variant="secondary" className="w-full" onClick={() => setShowDetail(null)}>Close</Button>
-          </div>
-        )}
-      </Modal>
     </AnimatedPage>
   );
 }

@@ -216,4 +216,28 @@ class NotificationService
             "/invoices"
         );
     }
+
+    /**
+     * Worker went inactive - order auto-reassigned.
+     */
+    public static function workerInactive(int $orderId, ?int $previousUserId, ?int $projectId = null): void
+    {
+        $previousUser = $previousUserId ? User::find($previousUserId) : null;
+        $userName = $previousUser?->name ?? 'Unknown user';
+
+        if (!$projectId) {
+            // Fallback: scan project tables
+            $projectId = \App\Services\ProjectOrderService::findProjectForOrder($orderId);
+        }
+        if (!$projectId) return;
+
+        Notification::sendToProjectManagers(
+            $projectId,
+            'worker_inactive',
+            'Worker Inactive',
+            "Order #{$orderId} was auto-reassigned because {$userName} became inactive.",
+            ['order_id' => $orderId, 'previous_user_id' => $previousUserId],
+            "/workflow/orders/{$orderId}"
+        );
+    }
 }

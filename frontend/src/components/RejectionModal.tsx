@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { workflowService } from '../services';
 import { 
   AlertTriangle, Loader2, X, Send, 
-  AlertCircle, FileX, RefreshCcw, HelpCircle
+  AlertCircle, FileX, RefreshCcw, HelpCircle, FileText, Info
 } from 'lucide-react';
 
 interface RejectionModalProps {
@@ -41,6 +41,20 @@ const rejectionTypes = [
     icon: RefreshCcw,
     color: 'from-brand-500 to-brand-600'
   },
+  { 
+    value: 'formatting', 
+    label: 'Formatting Issue', 
+    description: 'Layout or formatting does not comply with standards',
+    icon: FileText,
+    color: 'from-violet-500 to-purple-600'
+  },
+  { 
+    value: 'missing_info', 
+    label: 'Missing Information', 
+    description: 'Required information is absent or incomplete',
+    icon: Info,
+    color: 'from-sky-500 to-blue-600'
+  },
 ];
 
 const RejectionModal = ({ orderId, orderNumber, onReject, onClose }: RejectionModalProps) => {
@@ -78,6 +92,7 @@ const RejectionModal = ({ orderId, orderNumber, onReject, onClose }: RejectionMo
         <div className="p-6 border-b border-slate-100">
           <button
             onClick={onClose}
+            aria-label="Close rejection dialog"
             className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <X className="h-5 w-5 text-slate-400" />

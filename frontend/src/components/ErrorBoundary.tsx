@@ -63,13 +63,13 @@ class ErrorBoundary extends Component<Props, State> {
                 We're sorry, but something unexpected happened. Our team has been notified.
               </p>
 
-              {import.meta.env.DEV && this.state.error && (
+              {this.state.error && (
                 <div className="mb-6 text-left">
                   <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                     <h3 className="text-sm font-semibold text-red-800 mb-2">
-                      Error Details (Development Only)
+                      Error Details
                     </h3>
-                    <pre className="text-xs text-red-700 overflow-auto">
+                    <pre className="text-xs text-red-700 overflow-auto max-h-40">
                       {this.state.error.toString()}
                     </pre>
                     {this.state.errorInfo && (
@@ -77,7 +77,7 @@ class ErrorBoundary extends Component<Props, State> {
                         <summary className="text-sm font-semibold text-red-800 cursor-pointer">
                           Component Stack
                         </summary>
-                        <pre className="text-xs text-red-700 mt-2 overflow-auto">
+                        <pre className="text-xs text-red-700 mt-2 overflow-auto max-h-60">
                           {this.state.errorInfo.componentStack}
                         </pre>
                       </details>

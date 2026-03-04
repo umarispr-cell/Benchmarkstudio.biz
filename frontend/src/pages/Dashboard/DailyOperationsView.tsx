@@ -125,7 +125,7 @@ export default function DailyOperationsView() {
 
   const expandAll = () => {
     if (!data) return;
-    setExpandedProjects(new Set(data.projects.map(p => p.id)));
+    setExpandedProjects(new Set((data.projects || []).map(p => p.id)));
   };
 
   const collapseAll = () => {
@@ -138,11 +138,11 @@ export default function DailyOperationsView() {
     // Build CSV content
     const headers = ['Project Code', 'Project Name', 'Country', 'Department', 'Received', 'Delivered', 'Pending', 'Layers', 'Workers', 'QA Compliance %'];
     const rows = filteredProjects.map(p => {
-      const layerSummary = Object.entries(p.layers)
-        .map(([stage, layer]) => `${LAYER_LABELS[stage]}:${layer.total}`)
+      const layerSummary = Object.entries(p.layers || {})
+        .map(([stage, layer]) => `${LAYER_LABELS[stage]}:${layer?.total || 0}`)
         .join('; ');
-      const workerCount = Object.values(p.layers)
-        .reduce((sum, layer) => sum + layer.workers.length, 0);
+      const workerCount = Object.values(p.layers || {})
+        .reduce((sum, layer) => sum + (layer?.workers || []).length, 0);
       
       return [
         p.code,
@@ -154,7 +154,7 @@ export default function DailyOperationsView() {
         p.pending,
         layerSummary,
         workerCount,
-        p.qa_checklist.compliance_rate,
+        p.qa_checklist?.compliance_rate ?? 0,
       ];
     });
 
@@ -165,10 +165,10 @@ export default function DailyOperationsView() {
       ...rows.map(row => row.join(',')),
       '',
       `Summary:,,,,,,,,,`,
-      `Total Projects:,${data.totals.projects},,,,,,,,`,
-      `Total Received:,${data.totals.received},,,,,,,,`,
-      `Total Delivered:,${data.totals.delivered},,,,,,,,`,
-      `Total Pending:,${data.totals.pending},,,,,,,,`,
+      `Total Projects:,${data.totals?.projects ?? 0},,,,,,,,`,
+      `Total Received:,${data.totals?.received ?? 0},,,,,,,,`,
+      `Total Delivered:,${data.totals?.delivered ?? 0},,,,,,,,`,
+      `Total Pending:,${data.totals?.pending ?? 0},,,,,,,,`,
     ].join('\n');
 
     // Download
@@ -177,6 +177,7 @@ export default function DailyOperationsView() {
     link.href = URL.createObjectURL(blob);
     link.download = `daily-operations-${selectedDate}.csv`;
     link.click();
+    URL.revokeObjectURL(link.href);
   };
 
   const changeDate = (days: number) => {
@@ -199,14 +200,14 @@ export default function DailyOperationsView() {
     });
   };
 
-  const filteredProjects = data?.projects.filter(p => {
+  const filteredProjects = data?.projects?.filter(p => {
     if (filterCountry !== 'all' && p.country !== filterCountry) return false;
     if (filterDept !== 'all' && p.department !== filterDept) return false;
     return true;
   }) || [];
 
-  const countries = data ? [...new Set(data.projects.map(p => p.country))] : [];
-  const departments = data ? [...new Set(data.projects.map(p => p.department))] : [];
+  const countries = data ? [...new Set((data.projects || []).map(p => p.country))] : [];
+  const departments = data ? [...new Set((data.projects || []).map(p => p.department))] : [];
 
   if (loading) {
     return <DailyOpsSkeleton />;
@@ -298,7 +299,7 @@ export default function DailyOperationsView() {
             <Layers className="w-4 h-4 text-slate-400" />
             <span className="text-xs text-slate-500">Projects</span>
           </div>
-          <div className="text-2xl font-bold text-slate-900">{data.totals.projects}</div>
+          <div className="text-2xl font-bold text-slate-900">{data.totals?.projects ?? 0}</div>
           <div className="text-xs text-slate-400 mt-1">Active</div>
         </div>
         <div className="bg-white rounded-xl ring-1 ring-black/[0.04] p-4">
@@ -306,7 +307,7 @@ export default function DailyOperationsView() {
             <Package className="w-4 h-4 text-blue-500" />
             <span className="text-xs text-slate-500">Received</span>
           </div>
-          <div className="text-2xl font-bold text-blue-600">{data.totals.received}</div>
+          <div className="text-2xl font-bold text-blue-600">{data.totals?.received ?? 0}</div>
           <div className="text-xs text-slate-400 mt-1">Orders in</div>
         </div>
         <div className="bg-white rounded-xl ring-1 ring-black/[0.04] p-4">
@@ -314,7 +315,7 @@ export default function DailyOperationsView() {
             <TrendingUp className="w-4 h-4 text-brand-500" />
             <span className="text-xs text-slate-500">Delivered</span>
           </div>
-          <div className="text-2xl font-bold text-brand-600">{data.totals.delivered}</div>
+          <div className="text-2xl font-bold text-brand-600">{data.totals?.delivered ?? 0}</div>
           <div className="text-xs text-slate-400 mt-1">Completed</div>
         </div>
         <div className="bg-white rounded-xl ring-1 ring-black/[0.04] p-4">
@@ -322,7 +323,7 @@ export default function DailyOperationsView() {
             <AlertCircle className="w-4 h-4 text-amber-500" />
             <span className="text-xs text-slate-500">Pending</span>
           </div>
-          <div className="text-2xl font-bold text-amber-600">{data.totals.pending}</div>
+          <div className="text-2xl font-bold text-amber-600">{data.totals?.pending ?? 0}</div>
           <div className="text-xs text-slate-400 mt-1">In pipeline</div>
         </div>
         <div className="bg-white rounded-xl ring-1 ring-black/[0.04] p-4">
@@ -330,7 +331,7 @@ export default function DailyOperationsView() {
             <Users className="w-4 h-4 text-[#2AA7A0]" />
             <span className="text-xs text-slate-500">Work Items</span>
           </div>
-          <div className="text-2xl font-bold text-[#2AA7A0]">{data.totals.total_work_items}</div>
+          <div className="text-2xl font-bold text-[#2AA7A0]">{data.totals?.total_work_items ?? 0}</div>
           <div className="text-xs text-slate-400 mt-1">Completed</div>
         </div>
       </div>
@@ -492,12 +493,12 @@ function ChecklistSummaryModal({
   const layerLabel = modal.layer === 'drawer' ? 'Drawer' : modal.layer === 'checker' ? 'Checker' : 'QA';
 
   // Grand totals
-  const grandPlanCount = teams.reduce((s, t) => s + t.workers.reduce((ws, w) => ws + w.plan_count, 0), 0);
+  const grandPlanCount = teams.reduce((s, t) => s + (t.workers || []).reduce((ws, w) => ws + w.plan_count, 0), 0);
   const grandTotals: Record<string, number> = {};
   cols.forEach(c => { grandTotals[c] = 0; });
   let grandMistakeTotal = 0;
-  teams.forEach(t => t.workers.forEach(w => {
-    Object.entries(w.items).forEach(([k, v]) => { grandTotals[k] = (grandTotals[k] || 0) + v; });
+  teams.forEach(t => (t.workers || []).forEach(w => {
+    Object.entries(w.items || {}).forEach(([k, v]) => { grandTotals[k] = (grandTotals[k] || 0) + v; });
     grandMistakeTotal += w.mistake_total;
   }));
 
@@ -507,12 +508,12 @@ function ChecklistSummaryModal({
     const rows: string[][] = [];
     teams.forEach(team => {
       rows.push([team.team_name, '', ...cols.map(() => ''), '']);
-      team.workers.forEach(w => {
-        rows.push([w.name, String(w.plan_count), ...cols.map(c => String(w.items[c] || 0)), String(w.mistake_total)]);
+      (team.workers || []).forEach(w => {
+        rows.push([w.name, String(w.plan_count), ...cols.map(c => String((w.items || {})[c] || 0)), String(w.mistake_total)]);
       });
-      const teamPlan = team.workers.reduce((s, w) => s + w.plan_count, 0);
-      const teamItems = cols.map(c => String(team.workers.reduce((s, w) => s + (w.items[c] || 0), 0)));
-      const teamTotal = team.workers.reduce((s, w) => s + w.mistake_total, 0);
+      const teamPlan = (team.workers || []).reduce((s, w) => s + w.plan_count, 0);
+      const teamItems = cols.map(c => String((team.workers || []).reduce((s, w) => s + ((w.items || {})[c] || 0), 0)));
+      const teamTotal = (team.workers || []).reduce((s, w) => s + w.mistake_total, 0);
       rows.push([`${team.team_name} TOTAL`, String(teamPlan), ...teamItems, String(teamTotal)]);
     });
     rows.push(['GRAND TOTAL', String(grandPlanCount), ...cols.map(c => String(grandTotals[c] || 0)), String(grandMistakeTotal)]);
@@ -661,10 +662,10 @@ function ChecklistSummaryModal({
                 </thead>
                 <tbody>
                   {teams.map((team) => {
-                    const teamPlan = team.workers.reduce((s, w) => s + w.plan_count, 0);
+                    const teamPlan = (team.workers || []).reduce((s, w) => s + w.plan_count, 0);
                     const teamItems: Record<string, number> = {};
-                    cols.forEach(c => { teamItems[c] = team.workers.reduce((s, w) => s + (w.items[c] || 0), 0); });
-                    const teamMistakeTotal = team.workers.reduce((s, w) => s + w.mistake_total, 0);
+                    cols.forEach(c => { teamItems[c] = (team.workers || []).reduce((s, w) => s + ((w.items || {})[c] || 0), 0); });
+                    const teamMistakeTotal = (team.workers || []).reduce((s, w) => s + w.mistake_total, 0);
 
                     return (
                       <React.Fragment key={team.team_id}>
@@ -675,7 +676,7 @@ function ChecklistSummaryModal({
                           </td>
                         </tr>
                         {/* Workers */}
-                        {team.workers.map((w, wi) => (
+                        {(team.workers || []).map((w, wi) => (
                           <tr key={w.name} className={`border-b border-slate-100 hover:bg-[#2AA7A0]/5 ${wi % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                             <td className="px-3 py-1.5 font-medium text-slate-700 sticky left-0 bg-inherit z-[5] border-r border-slate-100">
                               {w.name}
@@ -684,7 +685,7 @@ function ChecklistSummaryModal({
                               {w.plan_count}
                             </td>
                             {cols.map(c => {
-                              const val = w.items[c] || 0;
+                              const val = (w.items || {})[c] || 0;
                               return (
                                 <td key={c} className="px-2 py-1.5 text-center border-r border-slate-100">
                                   <span className={`font-semibold ${
@@ -760,8 +761,8 @@ function ProjectRow({
   onToggle: () => void;
   onOpenSummary: (layer: string) => void;
 }) {
-  const layers = Object.entries(project.layers);
-  const totalWork = layers.reduce((sum, [, layer]) => sum + layer.total, 0);
+  const layers = Object.entries(project.layers || {});
+  const totalWork = layers.reduce((sum, [, layer]) => sum + (layer?.total || 0), 0);
   const hasWork = totalWork > 0;
 
   return (
@@ -840,9 +841,9 @@ function ProjectRow({
                       <span className="text-sm font-medium">{LAYER_LABELS[stage] || stage}</span>
                       <span className="text-lg font-bold">{layer.total}</span>
                     </div>
-                    {layer.workers.length > 0 ? (
+                    {(layer.workers || []).length > 0 ? (
                       <div className="space-y-2">
-                        {layer.workers.map(worker => (
+                        {(layer.workers || []).map(worker => (
                           <div key={worker.id} className="flex items-center justify-between text-xs">
                             <span className="truncate">{worker.name}</span>
                             <span className="font-medium">
@@ -859,6 +860,7 @@ function ProjectRow({
               </div>
 
               {/* QA Checklist compliance */}
+              {project.qa_checklist && (
               <div className="bg-slate-50 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <ClipboardCheck className="w-4 h-4 text-[#2AA7A0]" />
@@ -889,6 +891,7 @@ function ProjectRow({
                   </div>
                 </div>
               </div>
+              )}
 
               {/* Checklist Summary Buttons */}
               <div className="flex flex-wrap gap-2">

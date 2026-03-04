@@ -20,10 +20,11 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name', 'email', 'password', 'role', 'country', 'department',
-        'project_id', 'team_id', 'layer', 'is_active',
+        'project_id', 'team_id', 'old_system_id', 'layer', 'is_active',
         'last_activity', 'inactive_days',
-        'current_session_token', 'wip_count', 'today_completed',
+        'current_session_token', 'wip_count', 'wip_limit', 'today_completed',
         'shift_start', 'shift_end', 'is_absent', 'daily_target',
+        'avg_completion_minutes', 'rejection_rate_30d', 'assignment_score', 'skills',
     ];
 
     /**
@@ -35,6 +36,22 @@ class User extends Authenticatable
         'password',
         'remember_token',
     ];
+
+    /**
+     * Appended computed attributes.
+     */
+    protected $appends = ['is_online'];
+
+    /**
+     * Determine if the user is currently online.
+     * Online = has a session token AND was active in the last 5 minutes.
+     */
+    public function getIsOnlineAttribute(): bool
+    {
+        return $this->current_session_token !== null
+            && $this->last_activity !== null
+            && $this->last_activity->gt(now()->subMinutes(5));
+    }
 
     /**
      * Get the attributes that should be cast.
@@ -51,6 +68,10 @@ class User extends Authenticatable
             'is_absent' => 'boolean',
             'shift_start' => 'datetime:H:i',
             'shift_end' => 'datetime:H:i',
+            'skills' => 'array',
+            'avg_completion_minutes' => 'decimal:2',
+            'rejection_rate_30d' => 'decimal:4',
+            'assignment_score' => 'decimal:4',
         ];
     }
 
@@ -71,11 +92,62 @@ class User extends Authenticatable
     }
 
     /**
+     * Get teams that this user leads (for QA role).
+     */
+    public function ledTeams()
+    {
+        return $this->hasMany(Team::class, 'qa_user_id');
+    }
+
+    /**
      * Get all work assignments for the user.
      */
     public function workAssignments()
     {
         return $this->hasMany(WorkAssignment::class);
+    }
+
+    /**
+     * Projects managed by this user (for project_manager role — multiple projects allowed).
+     */
+    public function managedProjects()
+    {
+        return $this->belongsToMany(Project::class, 'project_manager_projects');
+    }
+
+    /**
+     * Projects assigned to this operation manager (M2M — can have multiple).
+     */
+    public function omProjects()
+    {
+        return $this->belongsToMany(Project::class, 'operation_manager_projects');
+    }
+
+    /**
+     * Get project IDs this user manages based on role.
+     * - OM: from operation_manager_projects pivot (multiple)
+     * - PM: from project_manager_projects pivot (multiple allowed)
+     * - Others: fallback to project_id column
+     */
+    public function getManagedProjectIds(): array
+    {
+        // Cache on the model instance to avoid repeated pivot queries in the same request
+        if (isset($this->cachedManagedProjectIds)) {
+            return $this->cachedManagedProjectIds;
+        }
+
+        if ($this->role === 'operations_manager') {
+            $ids = $this->omProjects()->pluck('projects.id')->toArray();
+            // Fallback to project_id if pivot is empty (backward compat)
+            $result = !empty($ids) ? $ids : ($this->project_id ? [(int) $this->project_id] : []);
+        } elseif ($this->role === 'project_manager') {
+            $result = $this->managedProjects()->pluck('projects.id')->toArray();
+        } else {
+            $result = $this->project_id ? [(int) $this->project_id] : [];
+        }
+
+        $this->cachedManagedProjectIds = $result;
+        return $result;
     }
 
     /**

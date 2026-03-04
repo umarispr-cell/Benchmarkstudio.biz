@@ -11,20 +11,25 @@ import {
   FileText, RefreshCw, X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ClockDisplay from '../../components/ClockDisplay';
 
 /* ───── Types ───── */
 interface ProjectOption {
   id: number;
   name: string;
   country: string;
+  timezone?: string;
 }
 
 interface OverviewOrder {
   id: number;
   order_number: string;
+  VARIANT_no?: string;
   address?: string;
   client_name?: string;
   priority?: string;
+  due_in?: string;
+  received_at?: string;
   drawer_name?: string;
   drawer_done?: string;
   drawer_date?: string;
@@ -53,6 +58,7 @@ interface OverviewCounts {
   pending: number;
   completed: number;
   amends: number;
+  unassigned?: number;
 }
 
 interface Stats {
@@ -89,14 +95,6 @@ interface ChecklistItem {
 type ViewTab = 'overview' | 'drawer-report' | 'checker-report' | 'checklists';
 
 /* ───── Helpers ───── */
-function getAusTime(): string {
-  return new Date().toLocaleString('en-AU', {
-    timeZone: 'Australia/Sydney',
-    year: 'numeric', month: 'long', day: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false,
-  });
-}
 
 function timeSince(dateStr?: string): string {
   if (!dateStr) return '';
@@ -113,8 +111,60 @@ function timeSince(dateStr?: string): string {
 
 function getOrderStatus(order: OverviewOrder): { label: string; color: string } {
   if (order.final_upload === 'yes') return { label: 'Upload', color: 'green' };
-  if (order.amend && order.amend > 0) return { label: 'Amend', color: 'amber' };
+  if (Number(order.amend) > 0) return { label: 'Amend', color: 'amber' };
   return { label: 'Process', color: 'rose' };
+}
+
+/** Parse due_in → ms remaining (PK timezone). */
+function parseDueIn(rawInput: unknown, receivedAtInput?: unknown): number | null {
+  const getPkNow = () => {
+    const pkStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
+    return new Date(pkStr).getTime();
+  };
+  // Safely coerce to string — API may return objects or numbers
+  const raw = (rawInput != null && typeof rawInput !== 'object') ? String(rawInput) : null;
+  const receivedAt = (receivedAtInput != null && typeof receivedAtInput !== 'object') ? String(receivedAtInput) : null;
+
+  if (raw) {
+    let d = new Date(raw);
+    if (isNaN(d.getTime())) {
+      const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+      if (m) d = new Date(+m[3], +m[1] - 1, +m[2], +m[4], +m[5], +m[6]);
+    }
+    if (!isNaN(d.getTime())) return d.getTime() - getPkNow();
+  }
+  if (receivedAt) {
+    const rd = new Date(receivedAt);
+    if (!isNaN(rd.getTime())) return (rd.getTime() + 24 * 3600_000) - getPkNow();
+  }
+  return null;
+}
+
+/** Remaining time badge with colour coding */
+function RemainingBadge({ dueIn, receivedAt }: { dueIn?: unknown; receivedAt?: unknown }) {
+  const ms = parseDueIn(dueIn, receivedAt);
+  if (ms === null) return <span className="text-slate-300">—</span>;
+  const totalMin = Math.floor(ms / 60000);
+  const overdue = totalMin < 0;
+  const absTotalMin = Math.abs(totalMin);
+  const hrs = Math.floor(absTotalMin / 60);
+  const mins = absTotalMin % 60;
+  const label = overdue
+    ? (hrs > 0 ? `-${hrs}h ${mins}m` : `-${mins}m`)
+    : (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`);
+  const cls = overdue
+    ? 'bg-red-100 text-red-700'
+    : hrs < 1
+      ? 'bg-orange-100 text-orange-700'
+      : hrs < 4
+        ? 'bg-yellow-100 text-yellow-700'
+        : 'bg-green-100 text-green-700';
+  return (
+    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${cls}`}>
+      <Clock className="w-2.5 h-2.5" />
+      {label}
+    </span>
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
@@ -125,11 +175,9 @@ export default function LiveQADashboard() {
   const [activeTab, setActiveTab] = useState<ViewTab>('overview');
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedProject, setSelectedProject] = useState<number>(0);
-  const [ausTime, setAusTime] = useState(getAusTime());
-
   // Overview state
   const [orders, setOrders] = useState<OverviewOrder[]>([]);
-  const [counts, setCounts] = useState<OverviewCounts>({ today_total: 0, pending: 0, completed: 0, amends: 0 });
+  const [counts, setCounts] = useState<OverviewCounts>({ today_total: 0, pending: 0, completed: 0, amends: 0, unassigned: 0 });
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [orderSearch, setOrderSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -164,18 +212,16 @@ export default function LiveQADashboard() {
   // Mistake Summary Modal
   const [mistakeModal, setMistakeModal] = useState<{ open: boolean; layer: string }>({ open: false, layer: 'drawer' });
 
-  // AUS clock
-  useEffect(() => {
-    const timer = setInterval(() => setAusTime(getAusTime()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  // Project timezone
+  const selectedProjectData = projects.find(p => p.id === selectedProject);
+  const projectTz = selectedProjectData?.timezone || 'Australia/Sydney';
 
   // Load projects
   useEffect(() => {
     projectService.list({ per_page: 100 } as any).then((res: any) => {
       const data = res.data?.data || res.data || [];
       const mapped = Array.isArray(data)
-        ? data.map((p: any) => ({ id: p.id, name: p.name, country: p.country }))
+        ? data.map((p: any) => ({ id: p.id, name: p.name, country: p.country, timezone: p.timezone }))
         : [];
       setProjects(mapped);
       // Default to Metro FP (project 13)
@@ -307,7 +353,7 @@ export default function LiveQADashboard() {
   /* ═══════════════════════════════════════════════════════════════ */
   return (
     <AnimatedPage>
-      {/* ─── Header with AUS Time ─── */}
+      {/* ─── Header with Project Time ─── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-5">
         <PageHeader
           title="Live QA Panel"
@@ -319,8 +365,7 @@ export default function LiveQADashboard() {
           }
         />
         <div className="text-right mt-2 sm:mt-0">
-          <div className="text-xs text-slate-500 font-medium">AUS Time</div>
-          <div className="text-sm font-semibold text-slate-800 font-mono">{ausTime}</div>
+          <ClockDisplay timezone={projectTz} className="text-sm font-semibold text-slate-800 font-mono" />
         </div>
       </div>
 
@@ -389,6 +434,16 @@ export default function LiveQADashboard() {
           }`}
         >
           Pending ({counts.pending})
+        </button>
+        <button
+          onClick={() => { setStatusFilter('unassigned'); setActiveTab('overview'); setPagination(p => ({...p, current_page: 1})); }}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+            statusFilter === 'unassigned' && activeTab === 'overview'
+              ? 'bg-amber-600 text-white shadow-sm'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          Unassigned ({counts.unassigned ?? 0})
         </button>
         <button
           onClick={() => { setStatusFilter('completed'); setActiveTab('overview'); setPagination(p => ({...p, current_page: 1})); }}
@@ -507,6 +562,8 @@ export default function LiveQADashboard() {
                     <thead>
                       <tr className="bg-brand-700 text-white">
                         <th className="px-3 py-2.5 text-left font-semibold text-xs whitespace-nowrap">Date</th>
+                        <th className="px-3 py-2.5 text-left font-semibold text-xs whitespace-nowrap">Order</th>
+                        <th className="px-2 py-2.5 text-left font-semibold text-xs whitespace-nowrap">Variant</th>
                         <th className="px-3 py-2.5 text-center font-semibold text-xs whitespace-nowrap">Priority</th>
                         <th className="px-3 py-2.5 text-left font-semibold text-xs whitespace-nowrap">Address</th>
                         <th className="px-3 py-2.5 text-center font-semibold text-xs whitespace-nowrap">Drawer</th>
@@ -562,6 +619,19 @@ export default function LiveQADashboard() {
                               )}
                             </td>
 
+                            {/* Order ID */}
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <div className="text-xs font-semibold text-slate-900">{String(order.order_number || '—')}</div>
+                              {Number(order.amend) > 0 && (
+                                <span className="text-[10px] text-amber-600 font-medium">AMEND</span>
+                              )}
+                            </td>
+
+                            {/* Variant */}
+                            <td className="px-2 py-2 text-slate-600 whitespace-nowrap text-xs">
+                              {String((order as any).VARIANT_no ?? '') || '—'}
+                            </td>
+
                             {/* Client / Priority */}
                             <td className="px-3 py-2 text-center">
                               <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
@@ -570,15 +640,20 @@ export default function LiveQADashboard() {
                                 order.priority === 'normal' ? 'bg-slate-100 text-slate-600' :
                                 'bg-slate-100 text-slate-500'
                               }`}>
-                                {order.priority || 'Normal'}
+                                {String(order.priority || 'Normal')}
                               </span>
                             </td>
 
-                            {/* Address */}
-                            <td className="px-3 py-2 max-w-[220px]">
-                              <div className="text-xs text-slate-700 truncate" title={order.address}>
-                                {order.address || '—'}
+                            {/* Address + Remaining Time */}
+                            <td className="px-3 py-2">
+                              <div className="text-xs text-slate-700 truncate" title={String(order.address || '')}>
+                                {String(order.address || '') || '—'}
                               </div>
+                              {!(order.workflow_state?.includes('COMPLETE') || order.workflow_state?.includes('DELIVER') || order.final_upload === 'yes') && (
+                                <div className="mt-0.5">
+                                  <RemainingBadge dueIn={(order as any).due_in} receivedAt={(order as any).received_at || order.created_at} />
+                                </div>
+                              )}
                             </td>
 
                             {/* Drawer */}
@@ -586,7 +661,7 @@ export default function LiveQADashboard() {
                               {order.drawer_name ? (
                                 <div className="flex items-center justify-center gap-1.5">
                                   <span className="text-xs font-medium text-slate-800 truncate max-w-[100px]">
-                                    {order.drawer_name}
+                                    {String(order.drawer_name ?? '')}
                                   </span>
                                   {hasDrawerDone && (
                                     <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold bg-brand-500 text-white rounded">
@@ -632,7 +707,7 @@ export default function LiveQADashboard() {
                               {order.checker_name ? (
                                 <div className="flex items-center justify-center gap-1.5">
                                   <span className="text-xs font-medium text-slate-800 truncate max-w-[100px]">
-                                    {order.checker_name}
+                                    {String(order.checker_name ?? '')}
                                   </span>
                                   {hasCheckerDone && (
                                     <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold bg-brand-500 text-white rounded">
@@ -801,10 +876,10 @@ export default function LiveQADashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {stats.worker_stats.map((ws, i) => (
+                        {(stats.worker_stats || []).map((ws, i) => (
                           <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50">
                             <td className="px-4 py-2 text-slate-400 text-xs">{i + 1}</td>
-                            <td className="px-4 py-2 font-medium text-slate-800">{ws.worker}</td>
+                            <td className="px-4 py-2 font-medium text-slate-800">{String(ws.worker ?? '')}</td>
                             <td className="px-4 py-2 text-right text-slate-600">{ws.orders_checked}</td>
                             <td className="px-4 py-2 text-right">
                               <span className={`font-bold ${ws.total_mistakes > 0 ? 'text-rose-600' : 'text-green-600'}`}>
@@ -840,9 +915,9 @@ export default function LiveQADashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {stats.checklist_stats.map((cs, i) => (
+                        {(stats.checklist_stats || []).map((cs, i) => (
                           <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50">
-                            <td className="px-4 py-2 font-medium text-slate-800">{cs.title}</td>
+                            <td className="px-4 py-2 font-medium text-slate-800">{String(cs.title ?? '')}</td>
                             <td className="px-4 py-2 text-right">
                               <span className={`font-bold ${cs.total_mistakes > 0 ? 'text-rose-600' : 'text-green-600'}`}>
                                 {cs.total_mistakes}
@@ -945,8 +1020,8 @@ export default function LiveQADashboard() {
                           </div>
                         ) : (<span className="font-medium text-slate-800">{item.title}</span>)}
                       </td>
-                      <td className="px-4 py-2 text-slate-600">{item.client}</td>
-                      <td className="px-4 py-2 text-slate-600">{item.product}</td>
+                      <td className="px-4 py-2 text-slate-600">{String(item.client ?? '')}</td>
+                      <td className="px-4 py-2 text-slate-600">{String(item.product ?? '')}</td>
                       <td className="px-4 py-2 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={() => setEditingChecklist(item)} className="p-1.5 rounded-md text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors" title="Edit">
@@ -1125,14 +1200,14 @@ export default function LiveQADashboard() {
                             {/* Team header row */}
                             <tr className="bg-slate-800">
                               <td colSpan={cols.length + 3} className="px-3 py-2 font-bold text-white text-xs sticky left-0 bg-slate-800 z-[5]">
-                                {team.team_name}
+                                {String(team.team_name ?? '')}
                               </td>
                             </tr>
                             {/* Worker rows */}
                             {team.workers.map((w, wi) => (
                               <tr key={w.name} className={`border-b border-slate-100 hover:bg-brand-50/30 ${wi % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                                 <td className="px-3 py-1.5 font-medium text-slate-700 sticky left-0 bg-inherit z-[5] border-r border-slate-100">
-                                  {w.name}
+                                  {String(w.name ?? '')}
                                 </td>
                                 <td className="px-3 py-1.5 text-center font-semibold text-brand-700 border-r border-slate-100">
                                   {w.plan_count}

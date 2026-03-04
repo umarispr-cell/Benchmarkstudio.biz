@@ -9,8 +9,9 @@ use InvalidArgumentException;
 class StateMachine
 {
     // ── Floor Plan (3-layer) states ──
+    // New flow: RECEIVED → PENDING_QA_REVIEW (PM assigns to QA) → QUEUED_DRAW (QA assigns to drawer)
     const FP_STATES = [
-        'RECEIVED', 'QUEUED_DRAW', 'IN_DRAW', 'SUBMITTED_DRAW',
+        'RECEIVED', 'PENDING_QA_REVIEW', 'QUEUED_DRAW', 'IN_DRAW', 'SUBMITTED_DRAW',
         'QUEUED_CHECK', 'IN_CHECK', 'REJECTED_BY_CHECK', 'SUBMITTED_CHECK',
         'QUEUED_QA', 'IN_QA', 'REJECTED_BY_QA', 'APPROVED_QA',
         'DELIVERED', 'ON_HOLD', 'CANCELLED',
@@ -24,8 +25,10 @@ class StateMachine
     ];
 
     // ── Allowed transitions: [from => [to1, to2, ...]] ──
+    // PM assigns to QA supervisor → QA assigns to drawer → normal flow
     const FP_TRANSITIONS = [
-        'RECEIVED'           => ['QUEUED_DRAW', 'ON_HOLD', 'CANCELLED'],
+        'RECEIVED'           => ['PENDING_QA_REVIEW', 'QUEUED_DRAW', 'ON_HOLD', 'CANCELLED'],
+        'PENDING_QA_REVIEW'  => ['QUEUED_DRAW', 'ON_HOLD', 'CANCELLED'],
         'QUEUED_DRAW'        => ['IN_DRAW', 'ON_HOLD', 'CANCELLED'],
         'IN_DRAW'            => ['SUBMITTED_DRAW', 'ON_HOLD', 'CANCELLED'],
         'SUBMITTED_DRAW'     => ['QUEUED_CHECK'],

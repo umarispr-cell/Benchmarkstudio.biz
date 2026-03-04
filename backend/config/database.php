@@ -83,6 +83,22 @@ return [
             ]) : [],
         ],
 
+        'metro_old' => [
+            'driver' => 'mysql',
+            'host' => env('METRO_DB_HOST', '127.0.0.1'),
+            'port' => env('METRO_DB_PORT', '3306'),
+            'database' => env('METRO_DB_DATABASE', 'stellarinstitute_metro_old'),
+            'username' => env('METRO_DB_USERNAME', env('DB_USERNAME', 'root')),
+            'password' => env('METRO_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'unix_socket' => env('DB_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => false,
+            'engine' => null,
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),

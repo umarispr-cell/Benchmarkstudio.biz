@@ -217,12 +217,39 @@ class InvoiceController extends Controller
 
         $total = 0;
         foreach ($categoryConfig as $category) {
-            $rate = $category['rate'] ?? 0;
+            $rate = floatval($category['rate'] ?? 0);
             $countKey = $category['count_key'] ?? 'delivered';
-            $count = $counts[$countKey] ?? $counts['delivered'] ?? 0;
+
+            // Support nested keys like "by_plan_type.color" or "by_bedrooms.3br"
+            $count = $this->getNestedCount($counts, $countKey);
+
+            // Support service_categories for manually entered counts
+            if ($count === 0 && isset($counts['service_categories'][$countKey])) {
+                $count = intval($counts['service_categories'][$countKey]);
+            }
+
             $total += $rate * $count;
         }
 
         return round($total, 2);
+    }
+
+    /**
+     * Get a count from a nested array structure using dot notation.
+     * e.g., "by_plan_type.color" => $counts['by_plan_type']['color']
+     */
+    private function getNestedCount(array $counts, string $key): int
+    {
+        $parts = explode('.', $key);
+        $value = $counts;
+
+        foreach ($parts as $part) {
+            if (!is_array($value) || !isset($value[$part])) {
+                return 0;
+            }
+            $value = $value[$part];
+        }
+
+        return intval($value);
     }
 }

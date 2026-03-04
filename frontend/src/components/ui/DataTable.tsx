@@ -33,6 +33,7 @@ interface DataTableProps<T = any> {
   selectedRows?: string[];
   onSelectRow?: (id: string, selected: boolean) => void;
   onSelectAll?: (selected: boolean) => void;
+  rowClassName?: (row: T) => string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -40,7 +41,7 @@ export default function DataTable<T extends Record<string, any> = Record<string,
   columns, data, keyField = 'id', loading, emptyIcon, emptyTitle = 'No data found',
   emptyDescription = 'There are no records to display.', pageSize = 10, onRowClick, 
   className = '', compact = false, stickyHeader = false, striped = false,
-  selectable = false, selectedRows = [], onSelectRow, onSelectAll,
+  selectable = false, selectedRows = [], onSelectRow, onSelectAll, rowClassName,
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -188,6 +189,7 @@ export default function DataTable<T extends Record<string, any> = Record<string,
                       ${onRowClick ? 'cursor-pointer' : ''} 
                       ${isSelected ? 'bg-brand-primary/5' : striped && idx % 2 === 1 ? 'bg-surface-secondary/50' : 'bg-transparent'}
                       hover:bg-surface-secondary
+                      ${rowClassName ? rowClassName(row) : ''}
                     `}
                   >
                     {selectable && (

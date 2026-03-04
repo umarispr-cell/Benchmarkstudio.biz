@@ -79,7 +79,8 @@ export default function ImportOrders() {
       {/* Project selector */}
       {projects.length > 1 && (
         <div className="mb-6">
-          <select value={selectedProject || ''} onChange={e => setSelectedProject(Number(e.target.value))} className="select text-sm">
+          <label htmlFor="project-select" className="sr-only">Select Project</label>
+          <select id="project-select" value={selectedProject || ''} onChange={e => setSelectedProject(Number(e.target.value))} className="select text-sm" title="Select project for import">
             {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
@@ -106,7 +107,7 @@ export default function ImportOrders() {
             </p>
             <p className="text-xs text-slate-400 mt-1">Supports .csv files</p>
           </div>
-          <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
+          <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} aria-label="Upload CSV file" title="Upload CSV file" />
         </div>
 
         {/* API Sources */}

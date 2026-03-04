@@ -50,7 +50,7 @@ export default function StatCard({ label, value, subtitle, icon: Icon, trend, co
       </div>
       <div className="flex items-end justify-between">
         <div>
-          <div className="text-2xl font-bold text-slate-900 tracking-tight">{value}</div>
+          <div className="text-2xl font-bold text-slate-900 tracking-tight">{typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')}</div>
           {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
         </div>
         {trend && TrendIcon && (

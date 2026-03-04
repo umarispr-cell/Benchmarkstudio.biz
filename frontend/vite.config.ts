@@ -20,13 +20,13 @@ export default defineConfig({
           'vendor-axios': ['axios'],
           // Charts — only needed by CEO dashboard
           'vendor-recharts': ['recharts'],
-          // PDF generation — only on button click
-          'vendor-pdf': ['jspdf', 'jspdf-autotable'],
+          // jspdf + jspdf-autotable: lazy-loaded via dynamic import(),
+          // NOT listed here — would defeat code-splitting (409KB eager).
         },
       },
     },
-    // Increase warning limit (chunks are now intentionally split)
-    chunkSizeWarningLimit: 600,
+    // Keep warning limit reasonable now that pdf chunk is lazy
+    chunkSizeWarningLimit: 500,
     // Target modern browsers for smaller output
     target: 'es2020',
   },

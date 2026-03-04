@@ -97,20 +97,25 @@ export default function WorkerDashboard() {
   }, []);
 
   /** Parse due_in "MM/DD/YYYY HH:MM:SS" or ISO → ms remaining.
+   *  due_in is in PK time; remaining = due_in − current PK time.
    *  Fallback: if due_in is empty, use received_at + 24h as default deadline. */
   const parseDueIn = (raw: string | null | undefined, receivedAt?: string | null): number | null => {
+    const getPkNow = () => {
+      const pkStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
+      return new Date(pkStr).getTime();
+    };
     if (raw) {
       let d = new Date(raw);
       if (isNaN(d.getTime())) {
         const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
         if (m) d = new Date(+m[3], +m[1] - 1, +m[2], +m[4], +m[5], +m[6]);
       }
-      if (!isNaN(d.getTime())) return d.getTime() - Date.now();
+      if (!isNaN(d.getTime())) return d.getTime() - getPkNow();
     }
     // Fallback: received_at + 24 hours
     if (receivedAt) {
       const rd = new Date(receivedAt);
-      if (!isNaN(rd.getTime())) return rd.getTime() + 24 * 3600_000 - Date.now();
+      if (!isNaN(rd.getTime())) return (rd.getTime() + 24 * 3600_000) - getPkNow();
     }
     return null;
   };
@@ -126,7 +131,8 @@ export default function WorkerDashboard() {
     return { label, overdue, hrs };
   };
 
-  const loadData = useCallback(async () => {
+  // Critical data: worker dashboard + current order (runs on every poll)
+  const loadCritical = useCallback(async () => {
     try {
       const [dashRes, currentRes] = await Promise.all([
         dashboardService.worker(),
@@ -150,21 +156,29 @@ export default function WorkerDashboard() {
       } else {
         setOrderStarted(false);
       }
-      
-      // Load completed orders and performance stats (no manual queue!)
-      try {
-        const [doneRes, perfRes] = await Promise.all([
-          workflowService.getCompleted(),
-          workflowService.getPerformance(),
-        ]);
-        setDoneOrders(doneRes.data.orders || []);
-        setPerformanceStats(perfRes.data);
-      } catch {
-        // Endpoints may not exist yet
-      }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
+
+  // Stats data: completed orders + performance (only on mount + manual refresh)
+  const loadStats = useCallback(async () => {
+    try {
+      const [doneRes, perfRes] = await Promise.all([
+        workflowService.getCompleted(),
+        workflowService.getPerformance(),
+      ]);
+      setDoneOrders(doneRes.data.orders || []);
+      setPerformanceStats(perfRes.data);
+    } catch {
+      // Endpoints may not exist yet
+    }
+  }, []);
+
+  // Full load: critical + stats
+  const loadData = useCallback(async () => {
+    await loadCritical();
+    await loadStats();
+  }, [loadCritical, loadStats]);
 
   const loadHistory = useCallback(async (page: number = 1) => {
     try {
@@ -177,11 +191,11 @@ export default function WorkerDashboard() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  /* ── Smart Polling: only reload when data actually changes ── */
+  /* ── Smart Polling: only reload critical data when data changes ── */
   useSmartPolling({
     scope: 'all',
     interval: 10_000,
-    onDataChanged: loadData,
+    onDataChanged: loadCritical,
   });
   
   useEffect(() => {
@@ -323,11 +337,16 @@ export default function WorkerDashboard() {
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-white rounded-lg p-3 shadow-sm">
               <div className="text-xs text-slate-500 mb-1">Previous Stage</div>
-              <div className="font-medium text-slate-900">Drawing</div>
+              <div className="font-medium text-slate-900">
+                {currentOrder.workflow_state?.includes('REJECTED') ? 'Correction Review'
+                  : currentOrder.workflow_type === 'PH_2_LAYER' ? 'Photo Enhancement' : 'Drawing'}
+              </div>
             </div>
             <div className="bg-white rounded-lg p-3 shadow-sm">
               <div className="text-xs text-slate-500 mb-1">Check Required</div>
-              <div className="font-medium text-slate-900">Full Verification</div>
+              <div className="font-medium text-slate-900">
+                {currentOrder.workflow_type === 'PH_2_LAYER' ? 'Enhancement Verification' : 'Full Verification'}
+              </div>
             </div>
           </div>
           {currentOrder.rejection_reason && (
@@ -348,18 +367,24 @@ export default function WorkerDashboard() {
             <Eye className="h-4 w-4 text-brand-600" /> QA Checklist
           </h4>
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <CheckCircle className="h-4 w-4 text-brand-500" /> Verify all specifications match client standards
-            </div>
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <CheckCircle className="h-4 w-4 text-brand-500" /> Check dimensions and measurements
-            </div>
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <CheckCircle className="h-4 w-4 text-brand-500" /> Validate file format and quality
-            </div>
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <CheckCircle className="h-4 w-4 text-brand-500" /> Confirm all corrections from previous stages applied
-            </div>
+            {(currentOrder.workflow_type === 'PH_2_LAYER'
+              ? [
+                  'Verify photo enhancement matches client standards',
+                  'Check color accuracy and styling',
+                  'Validate file resolution and format',
+                  'Confirm all corrections from previous stages applied',
+                ]
+              : [
+                  'Verify all specifications match client standards',
+                  'Check dimensions and measurements',
+                  'Validate file format and quality',
+                  'Confirm all corrections from previous stages applied',
+                ]
+            ).map((item, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm text-slate-600">
+                <CheckCircle className="h-4 w-4 text-brand-500" /> {item}
+              </div>
+            ))}
           </div>
           {metadata.client_standards && (
             <div className="mt-3 pt-3 border-t border-slate-200">
@@ -500,8 +525,8 @@ export default function WorkerDashboard() {
           <div className="bg-white rounded-xl ring-1 ring-black/[0.04] p-5">
             <h3 className="text-sm font-semibold text-slate-900 mb-4">Last 7 Days</h3>
             <div className="flex items-end justify-between gap-2 h-32">
-              {performanceStats.daily_stats.map((day, i) => {
-                const maxCount = Math.max(...performanceStats.daily_stats.map(d => d.count), 1);
+              {(performanceStats.daily_stats || []).map((day, i) => {
+                const maxCount = Math.max(...(performanceStats.daily_stats || []).map(d => d.count), 1);
                 const height = (day.count / maxCount) * 100;
                 return (
                   <div key={i} className="flex-1 flex flex-col items-center gap-1">
@@ -655,7 +680,7 @@ export default function WorkerDashboard() {
                   </div>
                 </div>
                 <div className="p-5">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+                  <div className={`grid grid-cols-2 ${(isDrawer || isChecker) ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4 mb-5`}>
                     {orderStarted ? (
                       <div>
                         <div className="text-xs text-slate-400 mb-1">Order #</div>
@@ -666,6 +691,19 @@ export default function WorkerDashboard() {
                         <div className="text-xs text-slate-400 mb-1">Order #</div>
                         <div className="text-sm font-semibold text-slate-400">••••••</div>
                       </div>
+                    )}
+                    {(isDrawer || isChecker) && (
+                      orderStarted ? (
+                        <div>
+                          <div className="text-xs text-slate-400 mb-1">Variant</div>
+                          <div className="text-sm font-semibold text-slate-900">{(currentOrder as any).VARIANT_no || '—'}</div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="text-xs text-slate-400 mb-1">Variant</div>
+                          <div className="text-sm font-semibold text-slate-400">••••••</div>
+                        </div>
+                      )
                     )}
                     <div>
                       <div className="text-xs text-slate-400 mb-1">Priority</div>

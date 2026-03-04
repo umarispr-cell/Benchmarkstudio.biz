@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/store';
 import { workflowService, projectService } from '../../services';
+import { useSmartPolling } from '../../hooks/useSmartPolling';
+import { useNewOrderHighlight } from '../../hooks/useNewOrderHighlight';
 import type { Order, WorkItem } from '../../types';
 import { AnimatedPage, PageHeader, StatusBadge, Modal, Button, DataTable } from '../../components/ui';
 import { AlertTriangle, RefreshCw, Eye, RotateCcw } from 'lucide-react';
+import ClockDisplay from '../../components/ClockDisplay';
 
 export default function RejectedOrders() {
   const { user } = useSelector((state: RootState) => state.auth);
@@ -18,7 +21,17 @@ export default function RejectedOrders() {
   const [reassignReason, setReassignReason] = useState('');
   const [reassigning, setReassigning] = useState(false);
 
-  const isManager = ['ceo', 'director', 'operations_manager'].includes(user?.role || '');
+  /* ── Project timezone ── */
+  const selectedProjectData = projects.find((p: any) => p.id === selectedProject);
+  const projectTz = selectedProjectData?.timezone || 'Australia/Sydney';
+
+  /* ── Project Time clock ── */
+
+  // CEO should not see reassign actions or access this page
+  const isManager = ['director', 'operations_manager'].includes(user?.role || '');
+
+  /* ── Highlight newly arrived rejected orders ── */
+  const highlightedIds = useNewOrderHighlight(orders);
 
   useEffect(() => {
     projectService.list().then(res => {
@@ -32,6 +45,15 @@ export default function RejectedOrders() {
   useEffect(() => {
     if (selectedProject) loadOrders();
   }, [selectedProject]);
+
+  /* ── Smart Polling: auto-refresh when rejected orders change ── */
+  useSmartPolling({
+    projectIds: selectedProject ? [selectedProject] : [],
+    scope: 'orders',
+    interval: 10_000,
+    onDataChanged: () => loadOrders(),
+    enabled: !!selectedProject,
+  });
 
   const loadOrders = async () => {
     if (!selectedProject) return;
@@ -60,7 +82,7 @@ export default function RejectedOrders() {
     if (!showReassign || reassignReason.length < 3) return;
     try {
       setReassigning(true);
-      await workflowService.reassignOrder(showReassign.id, null, reassignReason);
+      await workflowService.reassignOrder(showReassign.id, null, reassignReason, showReassign.project_id);
       setShowReassign(null); setReassignReason('');
       loadOrders();
     } catch (e) { console.error(e); }
@@ -77,7 +99,14 @@ export default function RejectedOrders() {
     <AnimatedPage>
       <PageHeader title="Rejected Orders" subtitle="Orders requiring rework"
         badge={orders.length > 0 ? <span className="text-xs font-medium text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full">{orders.length} rejected</span> : undefined}
-        actions={<Button variant="secondary" icon={RefreshCw} onClick={loadOrders}>Refresh</Button>}
+        actions={
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <ClockDisplay timezone={projectTz} className="text-sm font-semibold text-slate-800 font-mono" />
+            </div>
+            <Button variant="secondary" icon={RefreshCw} onClick={loadOrders}>Refresh</Button>
+          </div>
+        }
       />
 
       {/* Stats */}
@@ -103,7 +132,7 @@ export default function RejectedOrders() {
       {/* Project selector */}
       {projects.length > 1 && (
         <div className="mb-4">
-          <select value={selectedProject || ''} onChange={e => setSelectedProject(Number(e.target.value))} className="select text-sm">
+          <select value={selectedProject || ''} onChange={e => setSelectedProject(Number(e.target.value))} aria-label="Select project" className="select text-sm">
             {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
@@ -112,6 +141,7 @@ export default function RejectedOrders() {
       {/* Table */}
       <DataTable
         data={orders} loading={loading}
+        rowClassName={(o: Order) => highlightedIds.has(o.id) ? 'new-order-highlight' : ''}
         columns={[
           { key: 'order_number', label: 'Order', sortable: true, render: (o) => (
             <div>
@@ -184,9 +214,9 @@ export default function RejectedOrders() {
       <Modal open={!!showReassign} onClose={() => setShowReassign(null)} title="Reassign Order" subtitle="Re-queue this order for auto-assignment" size="sm">
         <div className="space-y-4">
           <p className="text-sm text-slate-500">Order <strong>{showReassign?.order_number}</strong> will be unassigned and re-queued.</p>
-          <div>
-            <label className="label">Reason (min 3 chars) *</label>
-            <textarea value={reassignReason} onChange={e => setReassignReason(e.target.value)} className="textarea" rows={3} placeholder="Why is this order being reassigned?" />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">Reason (min 3 chars) <span className="text-rose-500">*</span></label>
+            <textarea value={reassignReason} onChange={e => setReassignReason(e.target.value)} className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-colors resize-none" rows={3} placeholder="Why is this order being reassigned?" />
           </div>
         </div>
         <div className="mt-4 flex gap-3">

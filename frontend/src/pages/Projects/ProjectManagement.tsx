@@ -7,11 +7,44 @@ import { AnimatedPage, PageHeader, StatusBadge, Modal, Button, DataTable, Filter
 import { FolderKanban, Plus, Edit, Trash2, Users, BarChart3, MapPin } from 'lucide-react';
 
 const emptyForm = {
-  name: '', code: '', client_name: '', country: 'UK', department: 'floor_plan',
-  status: 'active', description: '', workflow_layers: ['drawer', 'checker', 'qa'],
+  name: '', code: '', client_name: '', country: 'all', department: 'floor_plan',
+  status: 'active', description: '', workflow_layers: ['drawer', 'checker', 'qa'], timezone: '',
 };
 
-const FLAGS: Record<string, string> = { UK: '\u{1F1EC}\u{1F1E7}', Australia: '\u{1F1E6}\u{1F1FA}', Canada: '\u{1F1E8}\u{1F1E6}', USA: '\u{1F1FA}\u{1F1F8}' };
+const COUNTRY_TIMEZONES: Record<string, { value: string; label: string }[]> = {
+  Australia: [
+    { value: 'Australia/Sydney', label: 'Sydney (AEST/AEDT)' },
+    { value: 'Australia/Melbourne', label: 'Melbourne (AEST/AEDT)' },
+    { value: 'Australia/Brisbane', label: 'Brisbane (AEST)' },
+    { value: 'Australia/Perth', label: 'Perth (AWST)' },
+    { value: 'Australia/Adelaide', label: 'Adelaide (ACST/ACDT)' },
+    { value: 'Australia/Darwin', label: 'Darwin (ACST)' },
+  ],
+  UK: [
+    { value: 'Europe/London', label: 'London (GMT/BST)' },
+  ],
+  Canada: [
+    { value: 'America/Toronto', label: 'Toronto (EST/EDT)' },
+    { value: 'America/Vancouver', label: 'Vancouver (PST/PDT)' },
+    { value: 'America/Edmonton', label: 'Edmonton (MST/MDT)' },
+    { value: 'America/Winnipeg', label: 'Winnipeg (CST/CDT)' },
+    { value: 'America/Halifax', label: 'Halifax (AST/ADT)' },
+    { value: 'America/St_Johns', label: "St. John's (NST/NDT)" },
+  ],
+  USA: [
+    { value: 'America/New_York', label: 'New York (EST/EDT)' },
+    { value: 'America/Chicago', label: 'Chicago (CST/CDT)' },
+    { value: 'America/Denver', label: 'Denver (MST/MDT)' },
+    { value: 'America/Los_Angeles', label: 'Los Angeles (PST/PDT)' },
+    { value: 'America/Anchorage', label: 'Anchorage (AKST/AKDT)' },
+    { value: 'Pacific/Honolulu', label: 'Honolulu (HST)' },
+  ],
+  Vietnam: [
+    { value: 'Asia/Ho_Chi_Minh', label: 'Ho Chi Minh (ICT)' },
+  ],
+};
+
+const FLAGS: Record<string, string> = { UK: '\u{1F1EC}\u{1F1E7}', Australia: '\u{1F1E6}\u{1F1FA}', Canada: '\u{1F1E8}\u{1F1E6}', USA: '\u{1F1FA}\u{1F1F8}', Vietnam: '\u{1F1FB}\u{1F1F3}' };
 
 export default function ProjectManagement() {
   const { user } = useSelector((state: RootState) => state.auth);
@@ -48,12 +81,12 @@ export default function ProjectManagement() {
     finally { setLoading(false); }
   };
 
-  const canManage = ['ceo', 'director', 'operations_manager'].includes(user?.role || '');
+  const canManage = ['ceo', 'director'].includes(user?.role || '');
 
   const openCreate = () => { setEditingProject(null); setFormData(emptyForm); setFormError(''); setShowModal(true); };
   const openEdit = (p: Project) => {
     setEditingProject(p);
-    setFormData({ name: p.name, code: p.code, client_name: p.client_name, country: p.country, department: p.department, status: p.status, description: p.description || '', workflow_layers: p.workflow_layers || ['drawer', 'checker', 'qa'] });
+    setFormData({ name: p.name, code: p.code, client_name: p.client_name, country: p.country, department: p.department, status: p.status, description: p.description || '', workflow_layers: p.workflow_layers || ['drawer', 'checker', 'qa'], timezone: (p as any).timezone || '' });
     setFormError(''); setShowModal(true);
   };
 
@@ -119,12 +152,13 @@ export default function ProjectManagement() {
       {/* Filters */}
       <FilterBar searchValue={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Search projects..."
         filters={<>
-          <select value={selectedCountry} onChange={e => setSelectedCountry(e.target.value)} className="select text-sm" aria-label="Filter by country">
+          <select value={selectedCountry} onChange={e => setSelectedCountry(e.target.value)} className="text-sm bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#2AA7A0]/20 focus:border-[#2AA7A0]/40 text-slate-700 cursor-pointer" aria-label="Filter by country">
             <option value="all">All Countries</option>
-            <option value="UK">UK</option><option value="Australia">Australia</option>
-            <option value="Canada">Canada</option><option value="USA">USA</option>
+            <option value="UK">🇬🇧 UK</option><option value="Australia">🇦🇺 Australia</option>
+            <option value="Canada">🇨🇦 Canada</option><option value="USA">🇺🇸 USA</option>
+            <option value="Vietnam">🇻🇳 Vietnam</option>
           </select>
-          <select value={selectedDepartment} onChange={e => setSelectedDepartment(e.target.value)} className="select text-sm" aria-label="Filter by department">
+          <select value={selectedDepartment} onChange={e => setSelectedDepartment(e.target.value)} className="text-sm bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#2AA7A0]/20 focus:border-[#2AA7A0]/40 text-slate-700 cursor-pointer" aria-label="Filter by department">
             <option value="all">All Departments</option>
             <option value="floor_plan">Floor Plan</option><option value="photos_enhancement">Photos Enhancement</option>
           </select>
@@ -240,12 +274,18 @@ export default function ProjectManagement() {
               id="country"
               label="Country"
               value={formData.country}
-              onChange={e => setFormData({ ...formData, country: e.target.value })}
+              onChange={e => {
+                const country = e.target.value;
+                const tzList = COUNTRY_TIMEZONES[country] || [];
+                setFormData({ ...formData, country, timezone: tzList.length === 1 ? tzList[0].value : '' });
+              }}
             >
+              <option value="all">All Countries</option>
               <option value="UK">United Kingdom</option>
               <option value="Australia">Australia</option>
               <option value="Canada">Canada</option>
               <option value="USA">United States</option>
+              <option value="Vietnam">Vietnam</option>
             </Select>
 
             <Select
@@ -269,6 +309,20 @@ export default function ProjectManagement() {
               <option value="completed">Completed</option>
             </Select>
           </div>
+
+          {formData.country && formData.country !== 'all' && COUNTRY_TIMEZONES[formData.country] && (
+            <Select
+              id="timezone"
+              label="Timezone"
+              value={formData.timezone}
+              onChange={e => setFormData({ ...formData, timezone: e.target.value })}
+            >
+              <option value="">Select Timezone</option>
+              {COUNTRY_TIMEZONES[formData.country].map(tz => (
+                <option key={tz.value} value={tz.value}>{tz.label}</option>
+              ))}
+            </Select>
+          )}
 
           <Textarea
             id="description"

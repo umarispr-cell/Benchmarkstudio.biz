@@ -15,7 +15,7 @@ class DatabaseSeeder extends Seeder
             ProjectSeeder::class,
             TeamSeeder::class,
             UserSeeder::class,
-            OrderSeeder::class,
+            // OrderSeeder::class,  // Disabled - use import:legacy command for real data
             ChecklistTemplateSeeder::class,
         ]);
     }

@@ -11,7 +11,7 @@ class StoreUserRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return in_array(auth()->user()->role, ['ceo', 'director', 'operations_manager']);
+        return in_array(auth()->user()->role, ['ceo', 'director', 'operations_manager', 'project_manager']);
     }
 
     /**
@@ -25,13 +25,16 @@ class StoreUserRequest extends FormRequest
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8|confirmed',
-            'role' => 'required|in:ceo,director,operations_manager,qa,checker,drawer,designer,accounts_manager',
-            'country' => 'required|string|max:255',
+            'role' => 'required|in:ceo,director,operations_manager,project_manager,qa,checker,drawer,designer,accounts_manager',
+            'country' => 'nullable|string|max:255',
             'department' => 'required|in:floor_plan,photos_enhancement',
             'project_id' => 'nullable|exists:projects,id',
             'team_id' => 'nullable|exists:teams,id',
             'layer' => 'nullable|in:drawer,checker,qa,designer',
             'is_active' => 'sometimes|boolean',
+            'wip_limit' => 'sometimes|integer|min:1|max:50',
+            'skills' => 'sometimes|nullable|array',
+            'skills.*' => 'string|max:100',
         ];
     }
 }

@@ -80,7 +80,7 @@ class AuthController extends Controller
         AuditService::logLogin($user->id, true);
 
         $response = [
-            'user' => $user->fresh(),
+            'user' => $user->fresh()->load(['project', 'team']),
             'token' => $token,
         ];
 

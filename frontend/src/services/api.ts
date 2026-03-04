@@ -6,6 +6,7 @@ const apiClient = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
   },
 });
 
@@ -15,6 +16,10 @@ apiClient.interceptors.request.use(
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      // Cloudflare strips the standard Authorization header on some plans.
+      // Send a duplicate in X-Authorization as a fallback — the backend
+      // ProxyAuthorizationHeader middleware copies it back if needed.
+      config.headers['X-Authorization'] = `Bearer ${token}`;
     }
     return config;
   },
@@ -23,14 +28,22 @@ apiClient.interceptors.request.use(
   }
 );
 
+// Guard flag to prevent multiple simultaneous redirects (redirect loop)
+let isRedirecting = false;
+
 // Response interceptor to handle errors and session management
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Reset redirect guard on any successful response
+    isRedirecting = false;
+    return response;
+  },
   (error) => {
-    if (error.response) {
+    if (error.response && !isRedirecting) {
       switch (error.response.status) {
         case 401:
           // Handle unauthorized - session expired or invalid token
+          isRedirecting = true;
           localStorage.removeItem('token');
           window.location.href = '/login';
           break;
@@ -40,6 +53,7 @@ apiClient.interceptors.response.use(
           break;
         case 409:
           // Handle conflict - duplicate session detected
+          isRedirecting = true;
           alert('This account is already logged in on another device. You have been logged out.');
           localStorage.removeItem('token');
           window.location.href = '/login';

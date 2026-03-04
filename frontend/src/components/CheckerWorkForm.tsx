@@ -68,7 +68,7 @@ export default function CheckerWorkForm({ order, onComplete, onClose }: CheckerW
     try {
       const res = await workflowService.orderFullDetails(order.id);
       setOrderDetails(res.data);
-      setElapsedSeconds(res.data.current_time_seconds);
+      setElapsedSeconds(Math.max(0, Math.floor(res.data.current_time_seconds)));
       setTimerRunning(res.data.timer_running);
     } catch (e) {
       console.error('Failed to load order details:', e);
@@ -91,9 +91,10 @@ export default function CheckerWorkForm({ order, onComplete, onClose }: CheckerW
   }, [timerRunning]);
 
   const formatTime = (seconds: number) => {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
+    const s = Math.max(0, Math.floor(seconds));
+    const hrs = Math.floor(s / 3600);
+    const mins = Math.floor((s % 3600) / 60);
+    const secs = s % 60;
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
