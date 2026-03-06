@@ -140,6 +140,7 @@ export default function RejectedOrders() {
 
       {/* Table */}
       <DataTable
+        pageSize={10000}
         data={orders} loading={loading}
         rowClassName={(o: Order) => highlightedIds.has(o.id) ? 'new-order-highlight' : ''}
         columns={[

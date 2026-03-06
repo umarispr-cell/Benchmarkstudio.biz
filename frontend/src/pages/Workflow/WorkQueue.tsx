@@ -166,6 +166,7 @@ export default function WorkQueue() {
       {/* Orders table */}
       <div className="mt-4">
         <DataTable
+          pageSize={10000}
           data={[...filtered].sort((a, b) => {
             const pw: Record<string, number> = { rush: 0, urgent: 0, high: 1, normal: 2, low: 3 };
             return (pw[a.priority] ?? 2) - (pw[b.priority] ?? 2);

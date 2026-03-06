@@ -179,6 +179,7 @@ export default function ImportOrders() {
       {/* History */}
       <h3 className="text-sm font-semibold text-slate-900 mb-3">Import History</h3>
       <DataTable
+        pageSize={10000}
         data={history} loading={loading}
         columns={[
           { key: 'created_at', label: 'Date', sortable: true, render: (h) => <span className="text-sm text-slate-500">{new Date(h.created_at).toLocaleString()}</span> },
