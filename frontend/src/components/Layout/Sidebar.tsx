@@ -26,7 +26,7 @@ const NAV = [
   { name: 'Assign to QA', href: '/pm-assign', icon: UserCheck, roles: ['director'] },
   { name: 'My Team', href: '/qa-team', icon: UsersRound, roles: ['qa'] },
   { name: 'Assignments', href: '/assign', icon: UserPlus, roles: ['director','operations_manager','project_manager','qa'] },
-  { name: 'Live QA', href: '/live-qa', icon: ShieldCheck, roles: ['live_qa','director'] },
+  { name: 'Live QA', href: '/live-qa', icon: ShieldCheck, roles: ['live_qa','director','ceo'] },
   { name: 'Rejected', href: '/rejected', icon: AlertTriangle, roles: ['director','operations_manager','project_manager','drawer','checker','qa','designer'] },
   { name: 'Work Queue', href: '/work', icon: ClipboardList, roles: ['drawer','checker','qa','designer'] },
 ];

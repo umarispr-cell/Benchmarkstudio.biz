@@ -5,8 +5,8 @@
 
 /* ─── Primitives ─── */
 
-function Pulse({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded-lg bg-slate-200/70 ${className}`} />;
+function Pulse({ className = '', style }: { className?: string; style?: React.CSSProperties }) {
+  return <div className={`animate-pulse rounded-lg bg-slate-200/70 ${className}`} style={style} />;
 }
 
 function PulseCircle({ className = '' }: { className?: string }) {
@@ -355,7 +355,7 @@ export function PMDashboardSkeleton() {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-        {['My Projects', 'Staff Report', 'Order Queue', 'Teams'].map((label, i) => (
+        {['My Projects', 'Staff Report', 'Order Queue', 'Teams'].map((_label, i) => (
           <div key={i} className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4">
             <Pulse className="h-4 w-20" />
             <Pulse className="h-4 w-6 rounded-full" />

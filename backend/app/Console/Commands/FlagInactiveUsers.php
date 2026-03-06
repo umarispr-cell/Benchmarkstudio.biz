@@ -77,9 +77,30 @@ class FlagInactiveUsers extends Command
             foreach ($assignedOrders as $order) {
                 // Unassign the order so it goes back to queue
                 $previousAssignment = $order->assigned_to;
+                $currentState = $order->workflow_state;
+                $newState = str_starts_with($currentState, 'IN_')
+                    ? str_replace('IN_', 'QUEUED_', $currentState)
+                    : $currentState;
                 $order->update([
                     'assigned_to' => null,
+                    'workflow_state' => $newState,
+                    'status' => 'pending',
                 ]);
+
+                // Sync unassignment to CRM
+                $existingCrm = \Illuminate\Support\Facades\DB::table('crm_order_assignments')
+                    ->where('project_id', $order->project_id)
+                    ->where('order_number', $order->order_number)
+                    ->first();
+                if ($existingCrm) {
+                    \Illuminate\Support\Facades\DB::table('crm_order_assignments')
+                        ->where('id', $existingCrm->id)
+                        ->update([
+                            'assigned_to'    => null,
+                            'workflow_state'  => $newState,
+                            'updated_at'     => now(),
+                        ]);
+                }
 
                 AuditService::log(
                     null,

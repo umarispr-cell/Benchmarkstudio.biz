@@ -6,8 +6,8 @@ import type { AssignmentWorker, AssignmentOrder, AssignmentDateStat, AssignmentR
 import { AnimatedPage, Modal, Button, Textarea, useToast } from '../../components/ui';
 import ChecklistModal from '../../components/ChecklistModal';
 import {
-  Users, RefreshCw, RotateCcw, Info, FileCheck, Search, Clock, AlertTriangle,
-  ChevronLeft, ChevronRight, Loader2, X, BarChart3, PanelLeftClose, PanelLeftOpen,
+  Users, RefreshCw, Info, Search, Clock, AlertTriangle,
+  Loader2, X, BarChart3, PanelLeftClose, PanelLeftOpen,
   Pencil, CheckSquare, Eye, ShieldCheck, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -29,8 +29,6 @@ export default function SupervisorAssignment() {
   const [workers, setWorkers] = useState<Record<string, AssignmentWorker[]>>({});
   const [orders, setOrders] = useState<AssignmentOrder[]>([]);
   const [totalOrders, setTotalOrders] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [lastPage, setLastPage] = useState(1);
   const [counts, setCounts] = useState({ today_total: 0, pending: 0, completed: 0, amends: 0, assigned: 0, unassigned: 0 });
   const [dateStats, setDateStats] = useState<AssignmentDateStat[]>([]);
   const [roleCompletions, setRoleCompletions] = useState<Record<string, AssignmentRoleCompletion>>({});
@@ -68,11 +66,11 @@ export default function SupervisorAssignment() {
   }, []);
 
   /* ── Main data loader ── */
-  const loadData = useCallback(async (page = 1, isRefresh = false) => {
+  const loadData = useCallback(async (_page = 1, isRefresh = false) => {
     if (!selectedQueue) return;
     try {
       isRefresh ? setRefreshing(true) : setLoading(true);
-      const params: any = { page, per_page: 50 };
+      const params: any = { per_page: 10000 };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (searchQuery) params.search = searchQuery;
       if (dateFilter) params.date = dateFilter;
@@ -82,8 +80,6 @@ export default function SupervisorAssignment() {
       setWorkers(d.workers || {});
       setOrders(d.orders?.data ?? []);
       setTotalOrders(d.orders?.total ?? 0);
-      setCurrentPage(d.orders?.current_page ?? 1);
-      setLastPage(d.orders?.last_page ?? 1);
       setCounts(d.counts || { today_total: 0, pending: 0, completed: 0, amends: 0, assigned: 0, unassigned: 0 });
       setDateStats(d.date_stats || []);
       setRoleCompletions(d.role_completions || {});
@@ -100,7 +96,7 @@ export default function SupervisorAssignment() {
   useSmartPolling({
     scope: 'orders',
     interval: 10_000,
-    onDataChanged: () => loadData(currentPage, true),
+    onDataChanged: () => loadData(1, true),
     enabled: !!selectedQueue,
   });
 
@@ -110,7 +106,7 @@ export default function SupervisorAssignment() {
       setReassigning(true);
       await workflowService.reassignOrder(showReassign.id, null, reassignReason, showReassign.project_id);
       setShowReassign(null); setReassignReason('');
-      loadData(currentPage, true);
+      loadData(1, true);
     } catch (e) { console.error(e); }
     finally { setReassigning(false); }
   };
@@ -143,7 +139,8 @@ export default function SupervisorAssignment() {
     { key: 'amends', label: 'Amends', count: counts.amends },
   ];
 
-  const fmtTime = (t: string | null) => { if (!t) return '—'; const d = new Date(t); return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); };
+  // fmtTime kept for future use
+  // const fmtTime = (t: string | null) => { if (!t) return '—'; const d = new Date(t); return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); };
 
   /* ── Countdown tick (every 30s) ── */
   const [, setTick] = useState(0);
@@ -237,7 +234,7 @@ export default function SupervisorAssignment() {
 
       toast({ type: 'success', title: 'Assigned', description: res.data?.message || `${role} assigned successfully` });
       // Also refresh from server to ensure consistency
-      loadData(currentPage, true);
+      loadData(1, true);
     } catch (e: any) {
       console.error(e);
       toast({ type: 'error', title: 'Assignment Failed', description: e?.response?.data?.message || 'Could not assign role' });
@@ -265,7 +262,7 @@ export default function SupervisorAssignment() {
   };
 
   /* ── Reusable cell renderer for role columns ── */
-  const RoleCell = ({ order, role, name, userId, done, color, startTime, endTime }: { order: AssignmentOrder; role: 'drawer' | 'checker' | 'qa'; name: string | null; userId?: number | null; done: string | null; color: string; startTime?: string | null; endTime?: string | null }) => {
+  const RoleCell = ({ order, role, name, userId: _userId, done, color, startTime, endTime }: { order: AssignmentOrder; role: 'drawer' | 'checker' | 'qa'; name: string | null; userId?: number | null; done: string | null; color: string; startTime?: string | null; endTime?: string | null }) => {
     const duration = fmtDuration(startTime || null, endTime || null);
     const isDone = done === 'yes';
     return (
@@ -442,7 +439,7 @@ export default function SupervisorAssignment() {
                 <div className="text-right">
                   <ClockDisplay timezone={projectTz} className="text-sm font-semibold text-slate-800 font-mono" />
                 </div>
-                <Button variant="secondary" icon={RefreshCw} onClick={() => loadData(currentPage, true)} disabled={refreshing}>
+                <Button variant="secondary" icon={RefreshCw} onClick={() => loadData(1, true)} disabled={refreshing}>
                   {refreshing ? 'Refreshing...' : 'Refresh'}
                 </Button>
               </div>
@@ -459,7 +456,7 @@ export default function SupervisorAssignment() {
 
             {/* Queue selector + controls */}
             <div className="flex flex-wrap items-center gap-2">
-              <select value={selectedQueue} onChange={e => { setSelectedQueue(e.target.value); setCurrentPage(1); }}
+              <select value={selectedQueue} onChange={e => { setSelectedQueue(e.target.value); }}
                 className="select text-sm min-w-[200px]" aria-label="Select queue">
                 {queues.map(q => <option key={q.queue_name} value={q.queue_name}>{q.queue_name} ({q.department} · {q.country})</option>)}
               </select>
@@ -467,7 +464,7 @@ export default function SupervisorAssignment() {
               {/* Status filter buttons */}
               <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5">
                 {statusButtons.map(sb => (
-                  <button key={sb.key} onClick={() => { setStatusFilter(sb.key); setCurrentPage(1); }}
+                  <button key={sb.key} onClick={() => { setStatusFilter(sb.key); }}
                     className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${statusFilter === sb.key ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
                     {sb.label} <span className="opacity-70">({sb.count})</span>
                   </button>
@@ -484,7 +481,7 @@ export default function SupervisorAssignment() {
               </div>
 
               {/* Date filter */}
-              <input type="date" value={dateFilter} onChange={e => { setDateFilter(e.target.value); setCurrentPage(1); }}
+              <input type="date" value={dateFilter} onChange={e => { setDateFilter(e.target.value); }}
                 className="input text-xs h-8 w-36" title="Filter by date" />
               {(dateFilter || selectedWorker) && (
                 <button onClick={() => { setDateFilter(''); setSelectedWorker(null); setSearchQuery(''); setStatusFilter('all'); }}
@@ -647,28 +644,10 @@ export default function SupervisorAssignment() {
                 </div>
               )}
 
-              {/* Pagination */}
-              {lastPage > 1 && (
-                <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 bg-slate-50/50">
-                  <span className="text-xs text-slate-500">Showing page {currentPage} of {lastPage} ({totalOrders} orders)</span>
-                  <div className="flex items-center gap-1">
-                    <button disabled={currentPage <= 1} onClick={() => loadData(currentPage - 1)}
-                      className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 transition-colors">
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    {Array.from({ length: Math.min(lastPage, 5) }, (_, i) => {
-                      const pg = currentPage <= 3 ? i + 1 : currentPage + i - 2;
-                      if (pg < 1 || pg > lastPage) return null;
-                      return (
-                        <button key={pg} onClick={() => loadData(pg)}
-                          className={`w-7 h-7 rounded text-xs font-medium transition-colors ${pg === currentPage ? 'bg-brand-600 text-white' : 'hover:bg-slate-200 text-slate-600'}`}>{pg}</button>
-                      );
-                    })}
-                    <button disabled={currentPage >= lastPage} onClick={() => loadData(currentPage + 1)}
-                      className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 transition-colors">
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
+              {/* Total count */}
+              {totalOrders > 0 && (
+                <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/50">
+                  <span className="text-xs text-slate-500">{totalOrders} orders</span>
                 </div>
               )}
             </div>
@@ -707,7 +686,7 @@ export default function SupervisorAssignment() {
       {/* Checklist Modal */}
       {showChecklist && (
         <ChecklistModal orderId={showChecklist.id} orderNumber={showChecklist.order_number}
-          onComplete={() => { setShowChecklist(null); loadData(currentPage, true); }}
+          onComplete={() => { setShowChecklist(null); loadData(1, true); }}
           onClose={() => setShowChecklist(null)} />
       )}
 

@@ -131,7 +131,7 @@ export default function PMAssignment() {
   /* ── QA Cell renderer ── */
   const QACell = ({ order }: { order: Order }) => {
     const qaName = order.qaSupervisor?.name || null;
-    const qaId = order.qaSupervisor?.id || null;
+    // const qaId = order.qaSupervisor?.id || null;
     return (
       <td className="px-3 py-2">
         <button onClick={(e) => openAssignDropdown(e, order.id)}

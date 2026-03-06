@@ -7,7 +7,7 @@ import LiveQAChecklistModal from '../../components/LiveQAChecklistModal';
 import {
   ShieldCheck, Search, AlertTriangle, CheckCircle, BarChart3,
   Loader2, FileSearch, Users, ClipboardList, Plus, Pencil, Trash2,
-  ChevronLeft, ChevronRight, Eye, Calendar, Clock,
+  ChevronLeft, Eye, Calendar, Clock,
   FileText, RefreshCw, X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -182,7 +182,6 @@ export default function LiveQADashboard() {
   const [orderSearch, setOrderSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [pagination, setPagination] = useState({ total: 0, per_page: 50, current_page: 1, last_page: 1 });
 
   // Stats state
   const [stats, setStats] = useState<Stats | null>(null);
@@ -240,8 +239,7 @@ export default function LiveQADashboard() {
     setOrdersLoading(true);
     try {
       const res = await liveQAService.getOverview(selectedProject, {
-        page: pagination.current_page,
-        per_page: 50,
+        per_page: 10000,
         search: orderSearch || undefined,
         date: dateFilter || undefined,
         filter: statusFilter,
@@ -249,13 +247,12 @@ export default function LiveQADashboard() {
       const d = res.data;
       setOrders(d.data || []);
       setCounts(d.counts || { today_total: 0, pending: 0, completed: 0, amends: 0 });
-      if (d.pagination) setPagination(d.pagination);
     } catch {
       setOrders([]);
     } finally {
       setOrdersLoading(false);
     }
-  }, [selectedProject, pagination.current_page, orderSearch, dateFilter, statusFilter]);
+  }, [selectedProject, orderSearch, dateFilter, statusFilter]);
 
   useEffect(() => {
     if (activeTab === 'overview') fetchOverview();
@@ -310,7 +307,7 @@ export default function LiveQADashboard() {
   }, [activeTab, fetchReport]);
 
   /* ─── Handlers ─── */
-  const handleSearch = () => setPagination(prev => ({ ...prev, current_page: 1 }));
+  const handleSearch = () => fetchOverview();
 
   const openReview = (orderNumber: string, layer: string) => {
     setReviewModal({ open: true, orderNumber, layer });
@@ -376,7 +373,6 @@ export default function LiveQADashboard() {
           value={String(selectedProject)}
           onChange={(e) => {
             setSelectedProject(Number(e.target.value));
-            setPagination(prev => ({ ...prev, current_page: 1 }));
           }}
           className="min-w-[180px]"
         >
@@ -426,7 +422,7 @@ export default function LiveQADashboard() {
 
         {/* Quick filter buttons */}
         <button
-          onClick={() => { setStatusFilter('all'); setActiveTab('overview'); setPagination(p => ({...p, current_page: 1})); }}
+          onClick={() => { setStatusFilter('all'); setActiveTab('overview'); }}
           className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
             activeTab === 'overview' && statusFilter === 'all'
               ? 'bg-brand-600 text-white shadow-sm'
@@ -436,7 +432,7 @@ export default function LiveQADashboard() {
           Pending ({counts.pending})
         </button>
         <button
-          onClick={() => { setStatusFilter('unassigned'); setActiveTab('overview'); setPagination(p => ({...p, current_page: 1})); }}
+          onClick={() => { setStatusFilter('unassigned'); setActiveTab('overview'); }}
           className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
             statusFilter === 'unassigned' && activeTab === 'overview'
               ? 'bg-amber-600 text-white shadow-sm'
@@ -446,7 +442,7 @@ export default function LiveQADashboard() {
           Unassigned ({counts.unassigned ?? 0})
         </button>
         <button
-          onClick={() => { setStatusFilter('completed'); setActiveTab('overview'); setPagination(p => ({...p, current_page: 1})); }}
+          onClick={() => { setStatusFilter('completed'); setActiveTab('overview'); }}
           className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
             statusFilter === 'completed' && activeTab === 'overview'
               ? 'bg-brand-600 text-white shadow-sm'
@@ -456,7 +452,7 @@ export default function LiveQADashboard() {
           Completed Orders ({counts.completed})
         </button>
         <button
-          onClick={() => { setStatusFilter('amends'); setActiveTab('overview'); setPagination(p => ({...p, current_page: 1})); }}
+          onClick={() => { setStatusFilter('amends'); setActiveTab('overview'); }}
           className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
             statusFilter === 'amends' && activeTab === 'overview'
               ? 'bg-brand-600 text-white shadow-sm'
@@ -524,13 +520,13 @@ export default function LiveQADashboard() {
               <input
                 type="date"
                 value={dateFilter}
-                onChange={(e) => { setDateFilter(e.target.value); setPagination(p => ({...p, current_page: 1})); }}
+                onChange={(e) => { setDateFilter(e.target.value); }}
                 className="px-2 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 title="Filter by date"
               />
               {dateFilter && (
                 <button
-                  onClick={() => { setDateFilter(''); setPagination(p => ({...p, current_page: 1})); }}
+                  onClick={() => { setDateFilter(''); }}
                   className="p-1 rounded text-slate-400 hover:text-slate-600"
                   title="Clear date filter (show today)"
                 >
@@ -767,55 +763,10 @@ export default function LiveQADashboard() {
                   </table>
                 </div>
 
-                {/* Pagination */}
-                {pagination.last_page > 1 && (
-                  <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/30">
-                    <span className="text-xs text-slate-500">
-                      Page {pagination.current_page} of {pagination.last_page} &middot; {pagination.total} orders
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        disabled={pagination.current_page <= 1}
-                        onClick={() => setPagination(prev => ({ ...prev, current_page: prev.current_page - 1 }))}
-                        className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                        title="Previous page"
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </button>
-                      {Array.from({ length: Math.min(pagination.last_page, 7) }, (_, idx) => {
-                        let pageNum: number;
-                        if (pagination.last_page <= 7) {
-                          pageNum = idx + 1;
-                        } else if (pagination.current_page <= 4) {
-                          pageNum = idx + 1;
-                        } else if (pagination.current_page >= pagination.last_page - 3) {
-                          pageNum = pagination.last_page - 6 + idx;
-                        } else {
-                          pageNum = pagination.current_page - 3 + idx;
-                        }
-                        return (
-                          <button
-                            key={pageNum}
-                            onClick={() => setPagination(prev => ({ ...prev, current_page: pageNum }))}
-                            className={`w-7 h-7 text-xs font-medium rounded-md transition-colors ${
-                              pagination.current_page === pageNum
-                                ? 'bg-brand-600 text-white'
-                                : 'text-slate-500 hover:bg-slate-100'
-                            }`}
-                          >
-                            {pageNum}
-                          </button>
-                        );
-                      })}
-                      <button
-                        disabled={pagination.current_page >= pagination.last_page}
-                        onClick={() => setPagination(prev => ({ ...prev, current_page: prev.current_page + 1 }))}
-                        className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                        title="Next page"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
+                {/* Total count */}
+                {orders.length > 0 && (
+                  <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/30">
+                    <span className="text-xs text-slate-500">{orders.length} orders</span>
                   </div>
                 )}
               </>

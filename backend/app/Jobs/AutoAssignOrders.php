@@ -218,8 +218,22 @@ class AutoAssignOrders implements ShouldQueue
 
             if (!$order) return; // Already assigned by another process
 
-            // Assign the worker
-            $order->update(['assigned_to' => $worker->id, 'team_id' => $worker->team_id]);
+            // Assign the worker — set role-specific columns (same as AssignmentEngine::startNext)
+            $assignData = ['assigned_to' => $worker->id, 'team_id' => $worker->team_id];
+            $role = $worker->role;
+            if ($role === 'drawer' || $role === 'designer') {
+                $assignData['drawer_id']    = $worker->id;
+                $assignData['drawer_name']  = $worker->name;
+                $assignData['dassign_time'] = now();
+            } elseif ($role === 'checker') {
+                $assignData['checker_id']    = $worker->id;
+                $assignData['checker_name']  = $worker->name;
+                $assignData['cassign_time']  = now();
+            } elseif ($role === 'qa') {
+                $assignData['qa_id']   = $worker->id;
+                $assignData['qa_name'] = $worker->name;
+            }
+            $order->update($assignData);
 
             // Transition QUEUED → IN_PROGRESS
             StateMachine::transition($order, $inState, $worker->id);
@@ -247,7 +261,10 @@ class AutoAssignOrders implements ShouldQueue
             // Update worker WIP
             $worker->increment('wip_count');
 
-            Log::info("AutoAssignOrders: Assigned order {$order->id} to {$worker->name} (role: {$worker->role})");
+            // Sync to project table + CRM for Live QA dashboard visibility
+            AssignmentEngine::syncToProjectTable($order->fresh(), $worker, 'start');
+
+            Log::info("AutoAssignOrders: Assigned order {$order->id} to {$worker->name} (role: {$role})");
         });
     }
 

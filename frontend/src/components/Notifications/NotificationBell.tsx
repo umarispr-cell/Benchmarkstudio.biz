@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Check, CheckCheck, Trash2, Clock, AlertTriangle, Package, UserX, FileText, Lock } from 'lucide-react';
+import { Bell, Check, CheckCheck, Trash2, Clock, AlertTriangle, Package, UserX, FileText, Lock, RotateCcw, UserMinus } from 'lucide-react';
 import type { RootState, AppDispatch } from '../../store/store';
 import type { Notification, NotificationType } from '../../types';
 import {
@@ -14,8 +15,7 @@ import {
 const TYPE_CONFIG: Record<NotificationType, { icon: typeof Bell; color: string; bg: string }> = {
   order_assigned:     { icon: Package,        color: 'text-brand-600',   bg: 'bg-brand-50'   },
   work_submitted:     { icon: Check,          color: 'text-brand-600',   bg: 'bg-brand-50'   },
-  order_rejected:     { icon: AlertTriangle,  color: 'text-red-600',     bg: 'bg-red-50'     },
-  order_received:     { icon: Package,        color: 'text-blue-600',    bg: 'bg-blue-50'    },
+  order_rejected:     { icon: AlertTriangle,  color: 'text-red-600',     bg: 'bg-red-50'     },  order_returned:     { icon: RotateCcw,      color: 'text-orange-600',  bg: 'bg-orange-50'  },  order_received:     { icon: Package,        color: 'text-blue-600',    bg: 'bg-blue-50'    },
   order_on_hold:      { icon: Clock,          color: 'text-amber-600',   bg: 'bg-amber-50'   },
   order_resumed:      { icon: Check,          color: 'text-brand-600',   bg: 'bg-brand-50'   },
   order_delivered:    { icon: CheckCheck,      color: 'text-brand-600',  bg: 'bg-brand-50'   },
@@ -23,6 +23,7 @@ const TYPE_CONFIG: Record<NotificationType, { icon: typeof Bell; color: string; 
   force_logout:       { icon: UserX,          color: 'text-red-600',     bg: 'bg-red-50'     },
   invoice_transition: { icon: FileText,       color: 'text-brand-600',   bg: 'bg-brand-50'   },
   month_locked:       { icon: Lock,           color: 'text-slate-600',   bg: 'bg-slate-100'  },
+  worker_inactive:    { icon: UserMinus,      color: 'text-amber-600',   bg: 'bg-amber-50'   },
 };
 
 function timeAgo(dateStr: string): string {
@@ -38,6 +39,7 @@ function timeAgo(dateStr: string): string {
 
 export default function NotificationBell() {
   const dispatch = useDispatch<AppDispatch>();
+  const navigate = useNavigate();
   const { items, unreadCount, loading, hasMore, page } = useSelector((s: RootState) => s.notifications);
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -66,6 +68,10 @@ export default function NotificationBell() {
 
   const handleMarkRead = (n: Notification) => {
     if (!n.read_at) dispatch(markAsRead(n.id));
+    if (n.action_url) {
+      navigate(n.action_url);
+      setOpen(false);
+    }
   };
 
   const handleMarkAll = () => {
@@ -105,7 +111,7 @@ export default function NotificationBell() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.96 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 top-12 w-96 bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 overflow-hidden z-50"
+            className="absolute right-0 top-12 w-96 bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 overflow-hidden z-[60]"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">

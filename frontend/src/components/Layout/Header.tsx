@@ -56,7 +56,7 @@ export default function Header() {
 
   return (
     <>
-      <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-100 flex items-center justify-between px-6 shrink-0">
+      <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-100 flex items-center justify-between px-6 shrink-0 relative z-40">
         {/* Left — Breadcrumb / Search trigger */}
         <button
           onClick={() => { setShowSearch(true); setTimeout(() => inputRef.current?.focus(), 50); }}
@@ -93,7 +93,7 @@ export default function Header() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
+            className="fixed inset-0 z-[70] flex items-start justify-center pt-[15vh]"
           >
             <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => { setShowSearch(false); setQuery(''); }} />
             <motion.div

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\Invoice;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\WorkItem;
@@ -287,10 +288,288 @@ class DashboardController extends Controller
             ];
         })->sortByDesc('delivered_today')->values();
 
+        // ═══════════════════════════════════════════════════════════════
+        // NEW CEO METRICS — Financial, Quality, SLA, Turnaround, Trends
+        // ═══════════════════════════════════════════════════════════════
+
+        // 1. SLA BREACHES (top-level)
+        $totalSlaBreaches = $slaBreaches->sum();
+
+        // 2. REJECTION METRICS
+        $rejectionStats = Order::queryAcrossProjects($allProjectIds->toArray(), function($q) {
+            $q->selectRaw("
+                SUM(CASE WHEN workflow_state IN ('REJECTED_BY_CHECK','REJECTED_BY_QA') THEN 1 ELSE 0 END) as active_rejections,
+                SUM(CASE WHEN rejected_at >= ? AND rejected_at < ? THEN 1 ELSE 0 END) as rejected_today,
+                SUM(CASE WHEN rejected_at >= ? THEN 1 ELSE 0 END) as rejected_week,
+                SUM(CASE WHEN rejected_at >= ? THEN 1 ELSE 0 END) as rejected_month,
+                SUM(CASE WHEN workflow_state = 'DELIVERED' AND recheck_count > 0 THEN 1 ELSE 0 END) as rework_delivered,
+                SUM(CASE WHEN workflow_state = 'DELIVERED' THEN 1 ELSE 0 END) as total_delivered_all
+            ", [
+                today()->startOfDay(), today()->addDay()->startOfDay(),
+                now()->startOfWeek(),
+                now()->startOfMonth(),
+            ]);
+        });
+        $rejections = [
+            'active_rejections' => (int) $rejectionStats->sum('active_rejections'),
+            'rejected_today' => (int) $rejectionStats->sum('rejected_today'),
+            'rejected_week' => (int) $rejectionStats->sum('rejected_week'),
+            'rejected_month' => (int) $rejectionStats->sum('rejected_month'),
+            'rework_rate' => $rejectionStats->sum('total_delivered_all') > 0
+                ? round(($rejectionStats->sum('rework_delivered') / $rejectionStats->sum('total_delivered_all')) * 100, 1)
+                : 0,
+        ];
+
+        // 3. TURNAROUND TIME (avg hours from received to delivered — this month)
+        $turnaroundData = Order::queryAcrossProjects($allProjectIds->toArray(), function($q) {
+            $q->where('workflow_state', 'DELIVERED')
+              ->whereNotNull('received_at')
+              ->whereNotNull('delivered_at')
+              ->where('delivered_at', '>=', now()->startOfMonth())
+              ->selectRaw("
+                  project_id,
+                  AVG(TIMESTAMPDIFF(HOUR, received_at, delivered_at)) as avg_hours,
+                  MIN(TIMESTAMPDIFF(HOUR, received_at, delivered_at)) as min_hours,
+                  MAX(TIMESTAMPDIFF(HOUR, received_at, delivered_at)) as max_hours,
+                  COUNT(*) as cnt
+              ")
+              ->groupBy('project_id');
+        });
+        $totalTurnaroundOrders = $turnaroundData->sum('cnt');
+        $weightedAvg = $totalTurnaroundOrders > 0
+            ? $turnaroundData->sum(fn($r) => $r->avg_hours * $r->cnt) / $totalTurnaroundOrders
+            : 0;
+        $turnaround = [
+            'avg_hours' => round($weightedAvg, 1),
+            'min_hours' => $turnaroundData->min('min_hours') ?? 0,
+            'max_hours' => $turnaroundData->max('max_hours') ?? 0,
+            'sample_size' => $totalTurnaroundOrders,
+        ];
+
+        // 4. BACKLOG AGING (pending orders age buckets)
+        $agingData = Order::queryAcrossProjects($allProjectIds->toArray(), function($q) {
+            $q->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED'])
+              ->whereNotNull('received_at')
+              ->selectRaw("
+                  SUM(CASE WHEN received_at >= ? THEN 1 ELSE 0 END) as age_0_24h,
+                  SUM(CASE WHEN received_at >= ? AND received_at < ? THEN 1 ELSE 0 END) as age_1_3d,
+                  SUM(CASE WHEN received_at >= ? AND received_at < ? THEN 1 ELSE 0 END) as age_3_7d,
+                  SUM(CASE WHEN received_at < ? THEN 1 ELSE 0 END) as age_7_plus
+              ", [
+                  now()->subHours(24),
+                  now()->subDays(3), now()->subHours(24),
+                  now()->subDays(7), now()->subDays(3),
+                  now()->subDays(7),
+              ]);
+        });
+        $backlogAging = [
+            'age_0_24h' => (int) $agingData->sum('age_0_24h'),
+            'age_1_3d' => (int) $agingData->sum('age_1_3d'),
+            'age_3_7d' => (int) $agingData->sum('age_3_7d'),
+            'age_7_plus' => (int) $agingData->sum('age_7_plus'),
+        ];
+
+        // 5. REVENUE / FINANCIAL SUMMARY (from invoices)
+        $currentMonth = now()->month;
+        $currentYear = now()->year;
+        $invoiceStats = Invoice::selectRaw("
+            SUM(CASE WHEN status IN ('approved','issued','sent') THEN total_amount ELSE 0 END) as revenue_approved,
+            SUM(CASE WHEN status = 'sent' THEN total_amount ELSE 0 END) as revenue_sent,
+            SUM(CASE WHEN status IN ('draft','prepared','pending_approval') THEN total_amount ELSE 0 END) as revenue_pipeline,
+            SUM(CASE WHEN month = ? AND year = ? THEN total_amount ELSE 0 END) as revenue_this_month,
+            SUM(total_amount) as revenue_total,
+            COUNT(*) as total_invoices,
+            SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as invoices_sent,
+            SUM(CASE WHEN status IN ('draft','prepared') THEN 1 ELSE 0 END) as invoices_pending
+        ", [$currentMonth, $currentYear])->first();
+        $financial = [
+            'revenue_approved' => round((float) ($invoiceStats->revenue_approved ?? 0), 2),
+            'revenue_sent' => round((float) ($invoiceStats->revenue_sent ?? 0), 2),
+            'revenue_pipeline' => round((float) ($invoiceStats->revenue_pipeline ?? 0), 2),
+            'revenue_this_month' => round((float) ($invoiceStats->revenue_this_month ?? 0), 2),
+            'revenue_total' => round((float) ($invoiceStats->revenue_total ?? 0), 2),
+            'total_invoices' => (int) ($invoiceStats->total_invoices ?? 0),
+            'invoices_sent' => (int) ($invoiceStats->invoices_sent ?? 0),
+            'invoices_pending' => (int) ($invoiceStats->invoices_pending ?? 0),
+        ];
+
+        // 6. STAFF UTILIZATION (who has active WIP vs not)
+        $staffWithWip = $allStaff->filter(fn($u) => ($u->wip_count ?? 0) > 0)->count();
+        $activeNonAbsent = $allStaff->filter(fn($u) => !$u->is_absent && $u->is_active)->count();
+        $utilization = [
+            'staff_with_wip' => $staffWithWip,
+            'total_available' => $activeNonAbsent,
+            'utilization_rate' => $activeNonAbsent > 0 ? round(($staffWithWip / $activeNonAbsent) * 100, 1) : 0,
+        ];
+
+        // 7. CAPACITY vs DEMAND
+        $totalDailyCapacity = $allStaff->filter(fn($u) => !$u->is_absent && $u->is_active)->sum('daily_target');
+        $capacityDemand = [
+            'daily_capacity' => (int) $totalDailyCapacity,
+            'today_received' => $wm->received_today,
+            'capacity_ratio' => $totalDailyCapacity > 0
+                ? round(($wm->received_today / $totalDailyCapacity) * 100, 1)
+                : 0,
+        ];
+
+        // 8. 7-DAY TREND (received vs delivered per day)
+        $trendData = Order::queryAcrossProjects($allProjectIds->toArray(), function($q) {
+            $q->where(function($sub) {
+                $sub->where('received_at', '>=', now()->subDays(7)->startOfDay())
+                    ->orWhere(function($sub2) {
+                        $sub2->where('workflow_state', 'DELIVERED')
+                             ->where('delivered_at', '>=', now()->subDays(7)->startOfDay());
+                    });
+              })
+              ->selectRaw("
+                  DATE(received_at) as recv_date,
+                  SUM(CASE WHEN received_at >= ? THEN 1 ELSE 0 END) as received,
+                  SUM(CASE WHEN workflow_state = 'DELIVERED' AND delivered_at >= ? AND DATE(delivered_at) = DATE(received_at) THEN 1 ELSE 0 END) as delivered_same_day
+              ", [now()->subDays(7)->startOfDay(), now()->subDays(7)->startOfDay()])
+              ->groupByRaw('DATE(received_at)');
+        });
+        // Build a cleaner approach: separate received and delivered queries
+        $trendReceived = Order::queryAcrossProjects($allProjectIds->toArray(), function($q) {
+            $q->where('received_at', '>=', now()->subDays(7)->startOfDay())
+              ->selectRaw("DATE(received_at) as the_date, COUNT(*) as cnt")
+              ->groupByRaw('DATE(received_at)');
+        })->pluck('cnt', 'the_date');
+
+        $trendDelivered = Order::queryAcrossProjects($allProjectIds->toArray(), function($q) {
+            $q->where('workflow_state', 'DELIVERED')
+              ->where('delivered_at', '>=', now()->subDays(7)->startOfDay())
+              ->selectRaw("DATE(delivered_at) as the_date, COUNT(*) as cnt")
+              ->groupByRaw('DATE(delivered_at)');
+        })->pluck('cnt', 'the_date');
+
+        $trendRejected = Order::queryAcrossProjects($allProjectIds->toArray(), function($q) {
+            $q->where('rejected_at', '>=', now()->subDays(7)->startOfDay())
+              ->whereNotNull('rejected_at')
+              ->selectRaw("DATE(rejected_at) as the_date, COUNT(*) as cnt")
+              ->groupByRaw('DATE(rejected_at)');
+        })->pluck('cnt', 'the_date');
+
+        $trend7d = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $date = now()->subDays($i)->format('Y-m-d');
+            $trend7d[] = [
+                'date' => $date,
+                'label' => now()->subDays($i)->format('D'),
+                'received' => (int) ($trendReceived[$date] ?? 0),
+                'delivered' => (int) ($trendDelivered[$date] ?? 0),
+                'rejected' => (int) ($trendRejected[$date] ?? 0),
+            ];
+        }
+
+        // 9. QUALITY METRICS (org-level QA compliance)
+        $qualityData = WorkItem::where('status', 'completed')
+            ->where('stage', 'qa')
+            ->where('completed_at', '>=', now()->startOfMonth())
+            ->selectRaw("COUNT(*) as total_qa, SUM(CASE WHEN rejection_code IS NULL OR rejection_code = '' THEN 1 ELSE 0 END) as passed")
+            ->first();
+        $quality = [
+            'total_qa_reviews' => (int) ($qualityData->total_qa ?? 0),
+            'qa_passed' => (int) ($qualityData->passed ?? 0),
+            'qa_compliance_rate' => ($qualityData->total_qa ?? 0) > 0
+                ? round(((int) $qualityData->passed / (int) $qualityData->total_qa) * 100, 1)
+                : 0,
+        ];
+
+        // 10. TOP/BOTTOM PERFORMERS (by completed work items today)
+        $performerData = WorkItem::where('status', 'completed')
+            ->whereDate('completed_at', today())
+            ->selectRaw('assigned_user_id, COUNT(*) as completed, AVG(time_spent_seconds) as avg_seconds')
+            ->groupBy('assigned_user_id')
+            ->orderByDesc('completed')
+            ->limit(50)
+            ->get();
+
+        $performerUserIds = $performerData->pluck('assigned_user_id')->toArray();
+        $performerUsers = User::whereIn('id', $performerUserIds)
+            ->select('id', 'name', 'role', 'project_id', 'team_id')
+            ->get()
+            ->keyBy('id');
+
+        $performers = $performerData->map(function($p) use ($performerUsers) {
+            $user = $performerUsers->get($p->assigned_user_id);
+            if (!$user) return null;
+            return [
+                'id' => $user->id,
+                'name' => $user->name,
+                'role' => $user->role,
+                'completed' => (int) $p->completed,
+                'avg_minutes' => round(($p->avg_seconds ?? 0) / 60, 1),
+            ];
+        })->filter()->values();
+
+        $topPerformers = $performers->take(5)->values()->toArray();
+        $bottomPerformers = $performers->count() > 5
+            ? $performers->sortBy('completed')->take(5)->values()->toArray()
+            : [];
+
+        // 11. COUNTRY COMPARISON (efficiency per country)
+        $countryComparison = collect($summary)->map(function($c) {
+            $eff = ($c['received_today'] ?? 0) > 0
+                ? round((($c['delivered_today'] ?? 0) / $c['received_today']) * 100, 1)
+                : 0;
+            return [
+                'country' => $c['country'],
+                'efficiency' => min($eff, 100),
+                'staff_utilization' => ($c['total_staff'] ?? 0) > 0
+                    ? round((($c['active_staff'] ?? 0) / $c['total_staff']) * 100, 1)
+                    : 0,
+                'pending_per_staff' => ($c['active_staff'] ?? 0) > 0
+                    ? round(($c['total_pending'] ?? 0) / $c['active_staff'], 1)
+                    : 0,
+            ];
+        })->values()->toArray();
+
+        // 12. ALERTS (anomaly detection)
+        $alerts = [];
+        // High SLA breaches
+        if ($totalSlaBreaches > 5) {
+            $alerts[] = ['type' => 'critical', 'message' => "{$totalSlaBreaches} orders past SLA deadline"];
+        }
+        // Rejection spike
+        if ($rejections['rejected_today'] > 10) {
+            $alerts[] = ['type' => 'warning', 'message' => "{$rejections['rejected_today']} rejections today — check quality"];
+        }
+        // Capacity overload
+        if ($capacityDemand['capacity_ratio'] > 120) {
+            $alerts[] = ['type' => 'warning', 'message' => "Demand exceeds capacity by " . round($capacityDemand['capacity_ratio'] - 100) . "%"];
+        }
+        // Low utilization
+        if ($utilization['utilization_rate'] < 50 && $activeNonAbsent > 5) {
+            $alerts[] = ['type' => 'info', 'message' => "Staff utilization at {$utilization['utilization_rate']}% — {$staffWithWip} of {$activeNonAbsent} working"];
+        }
+        // Aged backlog
+        if ($backlogAging['age_7_plus'] > 0) {
+            $alerts[] = ['type' => 'critical', 'message' => "{$backlogAging['age_7_plus']} orders stuck for 7+ days"];
+        }
+        // High absentees
+        if (($orgTotals['absentees'] ?? 0) > ($allStaff->count() * 0.2) && $allStaff->count() > 10) {
+            $alerts[] = ['type' => 'warning', 'message' => "High absenteeism: {$orgTotals['absentees']} staff absent"];
+        }
+
+        // Add new metrics to org_totals
+        $orgTotals['sla_breaches'] = $totalSlaBreaches;
+
         return [
             'org_totals' => $orgTotals,
             'countries' => $summary,
             'teams' => $teamOutput,
+            'rejections' => $rejections,
+            'turnaround' => $turnaround,
+            'backlog_aging' => $backlogAging,
+            'financial' => $financial,
+            'utilization' => $utilization,
+            'capacity_demand' => $capacityDemand,
+            'trend_7d' => $trend7d,
+            'quality' => $quality,
+            'top_performers' => $topPerformers,
+            'bottom_performers' => $bottomPerformers,
+            'country_comparison' => $countryComparison,
+            'alerts' => $alerts,
         ];
     }
 
@@ -1832,8 +2111,9 @@ class DashboardController extends Controller
         $dateFilter = $request->input('date', today()->toDateString());
         $search = $request->input('search');
         $assignedTo = $request->input('assigned_to');
-        $page = (int) $request->input('page', 1);
-        $perPage = (int) $request->input('per_page', 15);
+        // Pagination removed – return all orders in a single page
+        // $page = (int) $request->input('page', 1);
+        // $perPage = (int) $request->input('per_page', 15);
 
         // Selected columns
         $selectCols = 'id, order_number, project_id, client_reference, address, client_name, '
@@ -1928,11 +2208,8 @@ class DashboardController extends Controller
             });
         }
 
-        $total = (clone $query)->count();
-        $orders = (clone $query)->orderByDesc('received_at')->orderByDesc('id')
-            ->offset(($page - 1) * $perPage)
-            ->limit($perPage)
-            ->get();
+        $orders = (clone $query)->orderByDesc('received_at')->orderByDesc('id')->get();
+        $total = $orders->count();
 
         // ─── 3. Counts (single aggregation query instead of 6 separate queries) ───
         $baseQ = DB::table(DB::raw("({$unionQuery}) as queue_orders"));
@@ -2045,10 +2322,10 @@ class DashboardController extends Controller
             'workers' => $workers,
             'orders' => [
                 'data' => $orders,
-                'current_page' => $page,
-                'per_page' => $perPage,
+                'current_page' => 1,
+                'per_page' => $total ?: 1,
                 'total' => $total,
-                'last_page' => (int) ceil($total / $perPage),
+                'last_page' => 1,
             ],
             'counts' => [
                 'today_total' => $todayTotal,

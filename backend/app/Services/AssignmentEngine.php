@@ -37,10 +37,14 @@ class AssignmentEngine
         }
 
         // Find next order: priority first, then oldest received
-        // Phase 3: if worker has skills, prefer matching order_types
+        // Team constraint: checker and QA must only pick orders from their own team
         $query = Order::forProject($project->id)
             ->where('workflow_state', $queueState)
             ->whereNull('assigned_to');
+
+        if ($user->team_id && in_array($role, ['checker', 'qa'])) {
+            $query->where('team_id', $user->team_id);
+        }
 
         $skills = $user->skills ?? [];
         if (!empty($skills)) {
@@ -274,6 +278,19 @@ class AssignmentEngine
                     'assigned_to' => null,
                 ]);
 
+                // Sync unassignment to CRM
+                $existingCrm = DB::table('crm_order_assignments')
+                    ->where('project_id', $order->project_id)
+                    ->where('order_number', $order->order_number)
+                    ->first();
+                if ($existingCrm) {
+                    DB::table('crm_order_assignments')->where('id', $existingCrm->id)->update([
+                        'assigned_to'    => null,
+                        'workflow_state'  => $queueState,
+                        'updated_at'     => now(),
+                    ]);
+                }
+
                 // Create audit log
                 \App\Services\AuditService::log(
                     null,
@@ -391,19 +408,7 @@ class AssignmentEngine
     public static function syncToProjectTable(Order $order, User $user, string $action): void
     {
         try {
-            $projectTable = ProjectOrderService::getTableName($order->project_id);
-            if (!Schema::hasTable($projectTable)) {
-                return;
-            }
-
-            $projectOrder = DB::table($projectTable)
-                ->where('order_number', $order->order_number)
-                ->first();
-
-            if (!$projectOrder) {
-                return;
-            }
-
+            // ── Build role-specific update fields first (used by both project table AND CRM) ──
             $updates = [
                 'workflow_state' => $order->workflow_state,
                 'status'         => $order->status,
@@ -447,48 +452,79 @@ class AssignmentEngine
                 }
             }
 
-            DB::table($projectTable)
-                ->where('order_number', $order->order_number)
-                ->update($updates);
+            // ── 1. Update project table (if row exists) ──
+            $projectTable = ProjectOrderService::getTableName($order->project_id);
+            if (Schema::hasTable($projectTable)) {
+                $projectOrder = DB::table($projectTable)
+                    ->where('order_number', $order->order_number)
+                    ->first();
 
-            // ── Also persist to crm_order_assignments (survives cron sync) ──
-            // Merge $updates into crmData so role columns written to project table
-            // are also captured in CRM (the Order model may not have them yet).
-            $crmData = [
-                'workflow_state' => $order->workflow_state,
-                'assigned_to'    => $updates['assigned_to'] ?? $order->assigned_to,
-                'drawer_id'      => $updates['drawer_id'] ?? $order->drawer_id,
-                'drawer_name'    => $updates['drawer_name'] ?? $order->drawer_name,
-                'checker_id'     => $updates['checker_id'] ?? $order->checker_id,
-                'checker_name'   => $updates['checker_name'] ?? $order->checker_name,
-                'qa_id'          => $updates['qa_id'] ?? $order->qa_id,
-                'qa_name'        => $updates['qa_name'] ?? $order->qa_name,
-                'dassign_time'   => $updates['dassign_time'] ?? $order->dassign_time,
-                'cassign_time'   => $updates['cassign_time'] ?? $order->cassign_time,
-                'updated_at'     => now(),
-            ];
+                if ($projectOrder) {
+                    DB::table($projectTable)
+                        ->where('order_number', $order->order_number)
+                        ->update($updates);
+                } else {
+                    \Log::info('syncToProjectTable: order not found in project table (CRM still updated)', [
+                        'order_number' => $order->order_number,
+                        'project_id'   => $order->project_id,
+                        'table'        => $projectTable,
+                        'action'       => $action,
+                    ]);
+                }
+            }
 
-            // Include done-flags so dashboard COALESCE picks them up
-            if (isset($updates['drawer_done']))  $crmData['drawer_done']  = $updates['drawer_done'];
-            if (isset($updates['drawer_date']))  $crmData['drawer_date']  = $updates['drawer_date'];
-            if (isset($updates['checker_done'])) $crmData['checker_done'] = $updates['checker_done'];
-            if (isset($updates['checker_date'])) $crmData['checker_date'] = $updates['checker_date'];
-            if (isset($updates['final_upload'])) $crmData['final_upload'] = $updates['final_upload'];
-            if (isset($updates['ausFinaldate'])) $crmData['ausFinaldate'] = $updates['ausFinaldate'];
-
+            // ── 2. ALWAYS persist to crm_order_assignments (survives cron sync) ──
+            // IMPORTANT: Only write fields actively changed by this action.
+            // Do NOT read other roles' columns from the project table ($order)
+            // because an external sync may have wiped them — overwriting the
+            // CRM's correct values with stale NULLs from the project table.
             $existingCrm = DB::table('crm_order_assignments')
                 ->where('project_id', $order->project_id)
                 ->where('order_number', $order->order_number)
                 ->first();
+
+            // Base CRM fields always updated
+            $crmData = [
+                'workflow_state' => $order->workflow_state,
+                'assigned_to'    => $updates['assigned_to'] ?? $order->assigned_to,
+                'updated_at'     => now(),
+            ];
+
+            // Only include role columns that were explicitly set by
+            // the current action ($updates), NOT from $order (which may
+            // contain stale data if external sync overwrote the project table).
+            $roleFields = [
+                'drawer_id', 'drawer_name', 'dassign_time',
+                'checker_id', 'checker_name', 'cassign_time',
+                'qa_id', 'qa_name',
+                'drawer_done', 'drawer_date',
+                'checker_done', 'checker_date',
+                'final_upload', 'ausFinaldate',
+            ];
+            foreach ($roleFields as $field) {
+                if (isset($updates[$field])) {
+                    $crmData[$field] = $updates[$field];
+                }
+            }
 
             if ($existingCrm) {
                 DB::table('crm_order_assignments')
                     ->where('id', $existingCrm->id)
                     ->update($crmData);
             } else {
+                // New CRM row: safe to include all known values from the order
+                // since there's no prior CRM data to preserve.
                 $crmData['project_id']   = $order->project_id;
                 $crmData['order_number'] = $order->order_number;
                 $crmData['created_at']   = now();
+                $crmData['drawer_id']    = $updates['drawer_id'] ?? $order->drawer_id;
+                $crmData['drawer_name']  = $updates['drawer_name'] ?? $order->drawer_name;
+                $crmData['checker_id']   = $updates['checker_id'] ?? $order->checker_id;
+                $crmData['checker_name'] = $updates['checker_name'] ?? $order->checker_name;
+                $crmData['qa_id']        = $updates['qa_id'] ?? $order->qa_id;
+                $crmData['qa_name']      = $updates['qa_name'] ?? $order->qa_name;
+                $crmData['dassign_time'] = $updates['dassign_time'] ?? $order->dassign_time;
+                $crmData['cassign_time'] = $updates['cassign_time'] ?? $order->cassign_time;
                 DB::table('crm_order_assignments')->insert($crmData);
             }
 

@@ -333,11 +333,13 @@ Route::middleware(['auth:sanctum', 'single.session', 'throttle:api'])->group(fun
                 ->where('is_active', true)
                 ->with('managedProjects:id,code,name');
 
-            // OM: only show PMs assigned to the OM's own projects
+            // OM: show PMs assigned to the OM's own projects + unassigned PMs
             if ($user->role === 'operations_manager') {
                 $omProjectIds = $user->getManagedProjectIds();
-                $query->whereHas('managedProjects', function ($sub) use ($omProjectIds) {
-                    $sub->whereIn('projects.id', $omProjectIds);
+                $query->where(function ($q) use ($omProjectIds) {
+                    $q->whereHas('managedProjects', function ($sub) use ($omProjectIds) {
+                        $sub->whereIn('projects.id', $omProjectIds);
+                    })->orWhereDoesntHave('managedProjects'); // newly created PMs with no assignments
                 });
             }
 

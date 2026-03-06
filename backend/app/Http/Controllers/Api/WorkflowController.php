@@ -1249,16 +1249,50 @@ class WorkflowController extends Controller
             }
         } else {
             $newUser = \App\Models\User::findOrFail($request->input('user_id'));
-            
-            DB::transaction(function () use ($order, $oldAssignee, $newUser, $actor, $request) {
+
+            // Cross-team flag: management can override team constraint for checker/QA
+            $isCrossTeam = $order->team_id && $newUser->team_id
+                && in_array($newUser->role, ['checker', 'qa'])
+                && $newUser->team_id !== $order->team_id;
+
+            DB::transaction(function () use ($order, $oldAssignee, $newUser, $actor, $request, $isCrossTeam) {
+                if ($isCrossTeam) {
+                    // Log cross-team override for audit trail
+                    AuditService::log(
+                        $actor->id,
+                        'CROSS_TEAM_ASSIGN',
+                        'Order',
+                        (int) $order->id,
+                        (int) $order->project_id,
+                        ['team_id' => $order->team_id],
+                        ['team_id' => $newUser->team_id, 'new_user_id' => $newUser->id, 'reason' => $request->input('reason')]
+                    );
+                }
                 // Safely decrement old user's WIP
                 if ($oldAssignee) {
                     \App\Models\User::where('id', $oldAssignee)->where('wip_count', '>', 0)->decrement('wip_count');
                 }
                 
-                // Assign to new user and increment their WIP
-                $order->update(['assigned_to' => $newUser->id, 'team_id' => $newUser->team_id]);
+                // Assign to new user — set role-specific columns
+                $assignData = ['assigned_to' => $newUser->id, 'team_id' => $newUser->team_id];
+                $role = $newUser->role;
+                if ($role === 'drawer' || $role === 'designer') {
+                    $assignData['drawer_id']    = $newUser->id;
+                    $assignData['drawer_name']  = $newUser->name;
+                    $assignData['dassign_time'] = now();
+                } elseif ($role === 'checker') {
+                    $assignData['checker_id']    = $newUser->id;
+                    $assignData['checker_name']  = $newUser->name;
+                    $assignData['cassign_time']  = now();
+                } elseif ($role === 'qa') {
+                    $assignData['qa_id']   = $newUser->id;
+                    $assignData['qa_name'] = $newUser->name;
+                }
+                $order->update($assignData);
                 $newUser->increment('wip_count');
+
+                // Sync to project table + CRM
+                AssignmentEngine::syncToProjectTable($order->fresh(), $newUser, 'start');
 
                 AuditService::logAssignment(
                     $order->id,
@@ -1271,18 +1305,13 @@ class WorkflowController extends Controller
         }
 
         // ── Sync reassignment to crm_order_assignments ──
+        // Only write fields that were actually changed (assigned_to, workflow_state).
+        // Do NOT overwrite other roles' columns from the project table — external
+        // sync may have wiped them, and the CRM holds the authoritative values.
         $fresh = $order->fresh();
         $assignData = [
             'assigned_to'    => $fresh->assigned_to,
-            'drawer_id'      => $fresh->drawer_id,
-            'drawer_name'    => $fresh->drawer_name,
-            'checker_id'     => $fresh->checker_id,
-            'checker_name'   => $fresh->checker_name,
-            'qa_id'          => $fresh->qa_id,
-            'qa_name'        => $fresh->qa_name,
             'workflow_state' => $fresh->workflow_state,
-            'dassign_time'   => $fresh->dassign_time,
-            'cassign_time'   => $fresh->cassign_time,
             'updated_at'     => now(),
         ];
         $existingAssign = DB::table('crm_order_assignments')
@@ -1292,9 +1321,18 @@ class WorkflowController extends Controller
         if ($existingAssign) {
             DB::table('crm_order_assignments')->where('id', $existingAssign->id)->update($assignData);
         } else {
+            // New CRM row: safe to include all known values
             $assignData['project_id']   = $fresh->project_id;
             $assignData['order_number'] = $fresh->order_number;
             $assignData['created_at']   = now();
+            $assignData['drawer_id']    = $fresh->drawer_id;
+            $assignData['drawer_name']  = $fresh->drawer_name;
+            $assignData['checker_id']   = $fresh->checker_id;
+            $assignData['checker_name'] = $fresh->checker_name;
+            $assignData['qa_id']        = $fresh->qa_id;
+            $assignData['qa_name']      = $fresh->qa_name;
+            $assignData['dassign_time'] = $fresh->dassign_time;
+            $assignData['cassign_time'] = $fresh->cassign_time;
             DB::table('crm_order_assignments')->insert($assignData);
         }
 
@@ -1556,14 +1594,20 @@ class WorkflowController extends Controller
                 StateMachine::transition($order, 'QUEUED_DRAW', $actor->id);
             }
 
-            // Now assign to the specific drawer
+            // Now assign to the specific drawer — set role-specific columns
             $order->update([
-                'assigned_to' => $drawerUser->id,
-                'team_id' => $drawerUser->team_id,
+                'assigned_to'  => $drawerUser->id,
+                'team_id'      => $drawerUser->team_id,
+                'drawer_id'    => $drawerUser->id,
+                'drawer_name'  => $drawerUser->name,
+                'dassign_time' => now(),
             ]);
 
             // Increment drawer's WIP
             $drawerUser->increment('wip_count');
+
+            // Sync to project table + CRM
+            AssignmentEngine::syncToProjectTable($order->fresh(), $drawerUser, 'start');
 
             AuditService::log(
                 $actor->id,
@@ -1902,19 +1946,19 @@ class WorkflowController extends Controller
             );
 
             // ── Persist to crm_order_assignments (survives external sync truncation) ──
+            // Only write the role columns that were actually changed by this
+            // assignment. Reading other roles from $verified is unsafe because
+            // external sync may have wiped them from the project table.
             $assignData = [
-                'assigned_to'    => $verified->assigned_to,
-                'drawer_id'      => $verified->drawer_id,
-                'drawer_name'    => $verified->drawer_name,
-                'checker_id'     => $verified->checker_id,
-                'checker_name'   => $verified->checker_name,
-                'qa_id'          => $verified->qa_id,
-                'qa_name'        => $verified->qa_name,
                 'workflow_state' => $verified->workflow_state,
-                'dassign_time'   => $verified->dassign_time,
-                'cassign_time'   => $verified->cassign_time,
+                'assigned_to'    => $verified->assigned_to,
+                $cols['id_col']  => $user->id,
+                $cols['name_col'] => $user->name,
                 'updated_at'     => now(),
             ];
+            if ($cols['time_col']) {
+                $assignData[$cols['time_col']] = now();
+            }
             $existing = DB::table('crm_order_assignments')
                 ->where('project_id', $order->project_id)
                 ->where('order_number', $order->order_number)
@@ -1924,9 +1968,18 @@ class WorkflowController extends Controller
                     ->where('id', $existing->id)
                     ->update($assignData);
             } else {
+                // New CRM row: safe to include all known values
                 $assignData['project_id']   = $order->project_id;
                 $assignData['order_number'] = $order->order_number;
                 $assignData['created_at']   = now();
+                $assignData['drawer_id']    = $verified->drawer_id;
+                $assignData['drawer_name']  = $verified->drawer_name;
+                $assignData['checker_id']   = $verified->checker_id;
+                $assignData['checker_name'] = $verified->checker_name;
+                $assignData['qa_id']        = $verified->qa_id;
+                $assignData['qa_name']      = $verified->qa_name;
+                $assignData['dassign_time'] = $verified->dassign_time;
+                $assignData['cassign_time'] = $verified->cassign_time;
                 DB::table('crm_order_assignments')->insert($assignData);
             }
         });

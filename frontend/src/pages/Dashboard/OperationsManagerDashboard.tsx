@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { dashboardService } from '../../services';
 import { useSmartPolling } from '../../hooks/useSmartPolling';
 import type { OpsDashboardData, OpsProjectItem } from '../../types';

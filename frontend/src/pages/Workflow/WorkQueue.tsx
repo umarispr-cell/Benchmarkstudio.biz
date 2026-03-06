@@ -85,7 +85,7 @@ export default function WorkQueue() {
       if (isWorker) {
         // Workers use /workflow/my-queue — returns only their assigned orders
         const res = await workflowService.getQueue();
-        const d = res.data?.orders || res.data?.data || res.data;
+        const d = res.data?.orders || (res.data as any)?.data || res.data;
         let list = Array.isArray(d) ? d : [];
         // Client-side filtering for workers
         if (selectedState !== 'all') list = list.filter(o => o.workflow_state === selectedState);
@@ -171,12 +171,12 @@ export default function WorkQueue() {
             return (pw[a.priority] ?? 2) - (pw[b.priority] ?? 2);
           })} loading={loading}
           columns={[
-            { key: 'order_number', label: 'Order #', sortable: true, render: (o) => (
+            { key: 'order_number', label: 'Order #', sortable: true, render: (_o) => (
               <div>
                 <div className="font-semibold text-slate-400">••••••</div>
               </div>
             )},
-            { key: 'address', label: 'Address', render: (o) => (
+            { key: 'address', label: 'Address', render: (_o) => (
               <div className="text-xs text-slate-400">••••••</div>
             )},
             { key: 'priority', label: 'Priority', render: (o) => <StatusBadge status={o.priority} size="xs" /> },

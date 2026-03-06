@@ -262,6 +262,97 @@ export interface MasterDashboard {
   org_totals: OrgTotals;
   countries: CountryDashboard[];
   teams: TeamOutput[];
+  rejections: RejectionMetrics;
+  turnaround: TurnaroundMetrics;
+  backlog_aging: BacklogAging;
+  financial: FinancialMetrics;
+  utilization: UtilizationMetrics;
+  capacity_demand: CapacityDemand;
+  trend_7d: TrendDay[];
+  quality: QualityMetrics;
+  top_performers: PerformerEntry[];
+  bottom_performers: PerformerEntry[];
+  country_comparison: CountryCompare[];
+  alerts: DashboardAlert[];
+}
+
+export interface RejectionMetrics {
+  active_rejections: number;
+  rejected_today: number;
+  rejected_week: number;
+  rejected_month: number;
+  rework_rate: number;
+}
+
+export interface TurnaroundMetrics {
+  avg_hours: number;
+  min_hours: number;
+  max_hours: number;
+  sample_size: number;
+}
+
+export interface BacklogAging {
+  age_0_24h: number;
+  age_1_3d: number;
+  age_3_7d: number;
+  age_7_plus: number;
+}
+
+export interface FinancialMetrics {
+  revenue_approved: number;
+  revenue_sent: number;
+  revenue_pipeline: number;
+  revenue_this_month: number;
+  revenue_total: number;
+  total_invoices: number;
+  invoices_sent: number;
+  invoices_pending: number;
+}
+
+export interface UtilizationMetrics {
+  staff_with_wip: number;
+  total_available: number;
+  utilization_rate: number;
+}
+
+export interface CapacityDemand {
+  daily_capacity: number;
+  today_received: number;
+  capacity_ratio: number;
+}
+
+export interface TrendDay {
+  date: string;
+  label: string;
+  received: number;
+  delivered: number;
+  rejected: number;
+}
+
+export interface QualityMetrics {
+  total_qa_reviews: number;
+  qa_passed: number;
+  qa_compliance_rate: number;
+}
+
+export interface PerformerEntry {
+  id: number;
+  name: string;
+  role: string;
+  completed: number;
+  avg_minutes: number;
+}
+
+export interface CountryCompare {
+  country: string;
+  efficiency: number;
+  staff_utilization: number;
+  pending_per_staff: number;
+}
+
+export interface DashboardAlert {
+  type: 'critical' | 'warning' | 'info';
+  message: string;
 }
 
 export interface TeamOutput {
@@ -298,6 +389,7 @@ export interface OrgTotals {
   target_hit_rate: number;
   staff_achieved_target: number;
   staff_with_targets: number;
+  sla_breaches: number;
 }
 
 export interface CountryDashboard {
@@ -826,6 +918,7 @@ export type NotificationType =
   | 'order_assigned'
   | 'work_submitted'
   | 'order_rejected'
+  | 'order_returned'
   | 'order_received'
   | 'order_on_hold'
   | 'order_resumed'
@@ -833,7 +926,8 @@ export type NotificationType =
   | 'user_deactivated'
   | 'force_logout'
   | 'invoice_transition'
-  | 'month_locked';
+  | 'month_locked'
+  | 'worker_inactive';
 
 export interface Notification {
   id: number;

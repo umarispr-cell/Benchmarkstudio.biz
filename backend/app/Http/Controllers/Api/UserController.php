@@ -25,18 +25,15 @@ class UserController extends Controller
             // CEO only sees Directors and Operations Managers
             $query->whereIn('role', ['director', 'operations_manager']);
         } elseif ($authUser->role === 'project_manager') {
-            // PM sees only users in their team (if team_id set), else managed projects
+            // PM sees only workers in their team/projects — NOT other PMs or themselves
+            // Only OM can manage PM accounts
+            $query->where('id', '!=', $authUser->id);
+            $query->where('role', '!=', 'project_manager');
             if ($authUser->team_id) {
-                $query->where(function ($q) use ($authUser) {
-                    $q->where('team_id', $authUser->team_id)
-                      ->orWhere('id', $authUser->id); // always see self
-                });
+                $query->where('team_id', $authUser->team_id);
             } else {
                 $managedIds = $authUser->getManagedProjectIds();
-                $query->where(function ($q) use ($managedIds, $authUser) {
-                    $q->whereIn('project_id', $managedIds)
-                      ->orWhere('id', $authUser->id); // always see self
-                });
+                $query->whereIn('project_id', $managedIds);
             }
         } elseif ($authUser->role === 'operations_manager') {
             $managedIds = $authUser->getManagedProjectIds();
@@ -101,6 +98,11 @@ class UserController extends Controller
         $data = $request->validated();
         // Password is auto-hashed by User model's 'hashed' cast
 
+        // Store plain text password so PM/OM can view it later
+        if (!empty($data['password'])) {
+            $data['plain_password'] = $data['password'];
+        }
+
         // Auto-derive country from project if not provided
         if (empty($data['country']) && !empty($data['project_id'])) {
             $project = \App\Models\Project::find($data['project_id']);
@@ -140,8 +142,12 @@ class UserController extends Controller
         $user = User::findOrFail($id);
         $authUser = $request->user();
 
-        // PM can only update users in their team/project scope
+        // PM can only update users in their team/project scope — NOT themselves
         if ($authUser->role === 'project_manager') {
+            // Block self-edit — only OM can edit a PM's own record
+            if ((int)$user->id === (int)$authUser->id) {
+                return response()->json(['message' => 'You cannot edit your own account. Contact your Operations Manager.'], 403);
+            }
             $canEdit = false;
             if ($authUser->team_id && $user->team_id === $authUser->team_id) {
                 $canEdit = true;
@@ -150,9 +156,6 @@ class UserController extends Controller
                 if (in_array($user->project_id, $managedIds)) {
                     $canEdit = true;
                 }
-            }
-            if ((int)$user->id === (int)$authUser->id) {
-                $canEdit = true; // can always edit self
             }
             if (!$canEdit) {
                 return response()->json(['message' => 'You can only edit users in your team.'], 403);
@@ -164,6 +167,11 @@ class UserController extends Controller
 
         $data = $request->validated();
         // Password is auto-hashed by User model's 'hashed' cast
+
+        // Store plain text password so PM/OM can view it later
+        if (!empty($data['password'])) {
+            $data['plain_password'] = $data['password'];
+        }
 
         $user->update($data);
 

@@ -7,7 +7,7 @@ import { AnimatedPage, PageHeader, StatCard, PMDashboardSkeleton } from '../../c
 import {
   Package, TrendingUp, Clock, Users, ChevronDown, ChevronRight,
   Pencil, CheckSquare, Eye, Palette, CircleDot, UserCheck, AlertTriangle, Info,
-  Plus, Trash2, X, BarChart3, Timer, Target, Calendar, Search,
+  Plus, Trash2, X, Timer, Target, Search,
 } from 'lucide-react';
 
 export default function ProjectManagerDashboard() {

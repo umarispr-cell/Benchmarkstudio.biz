@@ -4,10 +4,11 @@ import type { RootState } from '../../store/store';
 import { userService, projectService } from '../../services';
 import type { User } from '../../types';
 import { AnimatedPage, PageHeader, StatusBadge, Modal, Button, DataTable, FilterBar } from '../../components/ui';
-import { Users as UsersIcon, Plus, Edit, Trash2, UserCheck, UserX, Shield, Activity, User as UserIcon, Mail, Lock, ChevronDown, Globe, Building, Layers, UsersRound } from 'lucide-react';
+import { Users as UsersIcon, Plus, Edit, Trash2, UserCheck, UserX, Shield, Activity, User as UserIcon, Mail, Lock, ChevronDown, Globe, Building, Layers, UsersRound, Eye, EyeOff } from 'lucide-react';
 
 const emptyForm = { name: '', email: '', password: '', password_confirmation: '', role: 'drawer', project_id: '', team_id: '', department: 'floor_plan', layer: '' };
-const FLAGS: Record<string, string> = { UK: '\u{1F1EC}\u{1F1E7}', Australia: '\u{1F1E6}\u{1F1FA}', Canada: '\u{1F1E8}\u{1F1E6}', USA: '\u{1F1FA}\u{1F1F8}', Vietnam: '\u{1F1FB}\u{1F1F3}' };
+// FLAGS kept for future use: country flag emoji map
+// const FLAGS: Record<string, string> = { UK: '\u{1F1EC}\u{1F1E7}', Australia: '\u{1F1E6}\u{1F1FA}', Canada: '\u{1F1E8}\u{1F1E6}', USA: '\u{1F1FA}\u{1F1F8}', Vietnam: '\u{1F1FB}\u{1F1F3}' };
 
 export default function UserManagement() {
   const { user: currentUser } = useSelector((state: RootState) => state.auth);
@@ -25,6 +26,8 @@ export default function UserManagement() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [formTeams, setFormTeams] = useState<{id: number; name: string}[]>([]);
   const [loadingTeams, setLoadingTeams] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const searchRef = useRef(searchTerm);
   searchRef.current = searchTerm;
@@ -70,8 +73,8 @@ export default function UserManagement() {
   ];
   const hiddenRoles: Record<string, string[]> = {
     ceo: ['ceo', 'project_manager', 'accounts_manager', 'drawer', 'checker', 'qa', 'designer'],
-    operations_manager: ['ceo', 'director', 'operations_manager'],
-    project_manager: ['ceo', 'director', 'operations_manager', 'project_manager'],
+    operations_manager: ['ceo', 'director', 'operations_manager', 'accounts_manager'],
+    project_manager: ['ceo', 'director', 'operations_manager', 'project_manager', 'accounts_manager'],
   };
   const rolesToHide = hiddenRoles[myRole] || (myRole === 'director' ? [] : [myRole]);
   const visibleRoleOptions = allRoleOptions.filter(r => !rolesToHide.includes(r.value));
@@ -267,6 +270,24 @@ export default function UserManagement() {
 
           {/* Password Row */}
           <div className="grid grid-cols-2 gap-4">
+            {/* Show stored password when editing (read-only) */}
+            {editingUser && (editingUser as any).plain_password && (
+              <div className="col-span-2">
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Current Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                    <Lock className="h-4 w-4 text-amber-500" />
+                  </div>
+                  <input 
+                    type="text"
+                    value={(editingUser as any).plain_password}
+                    readOnly
+                    className="w-full pl-10 pr-4 py-3 text-sm bg-amber-50 border border-amber-200 rounded-xl text-amber-800 font-mono font-semibold cursor-default select-all"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">This is the user's current password. You can share it with the worker if they forgot.</p>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
                 Password {editingUser ? <span className="text-slate-400 font-normal normal-case">(optional)</span> : <span className="text-rose-400">*</span>}
@@ -276,12 +297,15 @@ export default function UserManagement() {
                   <Lock className="h-4 w-4 text-slate-400" />
                 </div>
                 <input 
-                  type="password" 
+                  type={showPassword ? 'text' : 'password'} 
                   value={formData.password} 
                   onChange={e => setFormData({ ...formData, password: e.target.value })} 
                   placeholder={editingUser ? 'Leave blank to keep' : 'Min 8 characters'}
-                  className="w-full pl-10 pr-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 hover:border-slate-300 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all duration-200"
+                  className="w-full pl-10 pr-10 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 hover:border-slate-300 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all duration-200"
                 />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 transition-colors">
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
             <div>
@@ -291,12 +315,15 @@ export default function UserManagement() {
                   <Lock className="h-4 w-4 text-slate-400" />
                 </div>
                 <input 
-                  type="password" 
+                  type={showConfirmPassword ? 'text' : 'password'} 
                   value={formData.password_confirmation} 
                   onChange={e => setFormData({ ...formData, password_confirmation: e.target.value })} 
                   placeholder="Re-enter password"
-                  className="w-full pl-10 pr-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 hover:border-slate-300 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all duration-200"
+                  className="w-full pl-10 pr-10 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 hover:border-slate-300 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all duration-200"
                 />
+                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 transition-colors">
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
           </div>

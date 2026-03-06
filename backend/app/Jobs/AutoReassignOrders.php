@@ -107,6 +107,19 @@ class AutoReassignOrders implements ShouldQueue
                         User::where('id', $previousUser)->where('wip_count', '>', 0)->decrement('wip_count');
                     }
 
+                    // Sync unassignment to CRM
+                    $existingCrm = DB::table('crm_order_assignments')
+                        ->where('project_id', $order->project_id)
+                        ->where('order_number', $order->order_number)
+                        ->first();
+                    if ($existingCrm) {
+                        DB::table('crm_order_assignments')->where('id', $existingCrm->id)->update([
+                            'assigned_to'    => null,
+                            'workflow_state'  => $newState,
+                            'updated_at'     => now(),
+                        ]);
+                    }
+
                     // Log the auto-reassignment
                     AuditService::log(
                         null, // System action
