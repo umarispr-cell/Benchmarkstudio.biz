@@ -1455,7 +1455,10 @@ class WorkflowController extends Controller
             $query->where('team_id', $request->input('team_id'));
         }
 
-        $orders = $query->orderBy('received_at', 'desc')->paginate(50);
+        $orders = $query
+            ->orderByRaw("FIELD(priority, 'rush', 'urgent', 'high', 'normal', 'low', '') ASC")
+            ->orderBy('received_at', 'desc')
+            ->paginate(50);
 
         return response()->json($orders);
     }

@@ -1911,6 +1911,7 @@ class DashboardController extends Controller
             $queued = Order::forProject($pid)
                 ->whereNull('assigned_to')
                 ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED'])
+                ->orderByRaw("FIELD(priority, 'rush', 'urgent', 'high', 'normal', 'low', '') ASC")
                 ->orderBy('received_at', 'asc')
                 ->limit(20)
                 ->get(['id', 'order_number', 'project_id', 'workflow_state', 'priority', 'received_at', 'client_reference', 'address', 'due_in']);
@@ -2208,7 +2209,11 @@ class DashboardController extends Controller
             });
         }
 
-        $orders = (clone $query)->orderByDesc('received_at')->orderByDesc('id')->get();
+        $orders = (clone $query)
+            ->orderByRaw("FIELD(priority, 'rush', 'urgent', 'high', 'normal', 'low', '') ASC")
+            ->orderByDesc('received_at')
+            ->orderByDesc('id')
+            ->get();
         $total = $orders->count();
 
         // ─── 3. Counts (single aggregation query instead of 6 separate queries) ───
