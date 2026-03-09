@@ -8,7 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+# dist — tracked: deployed to production
 dist-ssr
 *.local
 

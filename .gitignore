@@ -18,7 +18,7 @@ Thumbs.db
 .env.*.local
 
 # Compiled output
-dist/
+# dist/ — tracked: frontend/dist is deployed to production
 build/
 *.compiled
 
