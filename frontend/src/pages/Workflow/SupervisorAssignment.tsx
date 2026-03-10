@@ -8,7 +8,7 @@ import ChecklistModal from '../../components/ChecklistModal';
 import {
   Users, RefreshCw, Info, Search, Clock, AlertTriangle,
   Loader2, X, BarChart3, PanelLeftClose, PanelLeftOpen,
-  Pencil, CheckSquare, Eye, ShieldCheck, ChevronDown, ChevronUp,
+  Pencil, CheckSquare, Eye, ShieldCheck, ChevronDown, ChevronUp, Play,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ClockDisplay from '../../components/ClockDisplay';
@@ -109,6 +109,22 @@ export default function SupervisorAssignment() {
       loadData(1, true);
     } catch (e) { console.error(e); }
     finally { setReassigning(false); }
+  };
+
+  /* ── Resume held order ── */
+  const [resumingOrderId, setResumingOrderId] = useState<number | null>(null);
+  const handleResume = async (orderId: number, projectId?: number) => {
+    try {
+      setResumingOrderId(orderId);
+      await workflowService.resumeOrder(orderId, projectId);
+      toast({ title: 'Order resumed', description: 'Order has been returned to the workflow.', type: 'success' });
+      loadData(1, true);
+    } catch (e: any) {
+      console.error(e);
+      toast({ title: 'Resume failed', description: e?.response?.data?.message || 'Could not resume order.', type: 'error' });
+    } finally {
+      setResumingOrderId(null);
+    }
   };
 
   /* ── Derived data ── */
@@ -261,12 +277,31 @@ export default function SupervisorAssignment() {
     return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
   };
 
+  /* ── Determine if a role's stage hasn't been reached yet ── */
+  const DRAW_STAGES = ['RECEIVED', 'QUEUED_DRAW', 'IN_DRAW', 'SUBMITTED_DRAW', 'PENDING_QA_REVIEW'];
+  const CHECK_STAGES = [...DRAW_STAGES, 'QUEUED_CHECK', 'IN_CHECK', 'SUBMITTED_CHECK'];
+  const isWaiting = (ws: string | undefined, role: 'drawer' | 'checker' | 'qa'): boolean => {
+    if (!ws) return false;
+    if (role === 'checker') return DRAW_STAGES.includes(ws);
+    if (role === 'qa') return CHECK_STAGES.includes(ws);
+    return false;
+  };
+
   /* ── Reusable cell renderer for role columns ── */
   const RoleCell = ({ order, role, name, userId: _userId, done, color, startTime, endTime }: { order: AssignmentOrder; role: 'drawer' | 'checker' | 'qa'; name: string | null; userId?: number | null; done: string | null; color: string; startTime?: string | null; endTime?: string | null }) => {
     const duration = fmtDuration(startTime || null, endTime || null);
     const isDone = done === 'yes';
+    const waiting = !name && !isDone && isWaiting(order.workflow_state, role);
     return (
       <td className="px-3 py-2">
+        {waiting ? (
+          <div className="flex items-center gap-1 px-1 py-0.5">
+            <div className="w-5 h-5 rounded-full bg-amber-100 text-amber-500 flex items-center justify-center flex-shrink-0">
+              <Clock className="w-3 h-3" />
+            </div>
+            <span className="text-amber-500 text-xs font-medium">Waiting</span>
+          </div>
+        ) : (
         <button onClick={(e) => { if (!isDone) openAssignDropdown(e, order.id, role); }}
           className={`flex flex-col group rounded px-1 -mx-1 py-0.5 transition-colors w-full text-left ${
             isDone ? 'cursor-default opacity-80' : 'cursor-pointer hover:bg-slate-50'
@@ -289,6 +324,7 @@ export default function SupervisorAssignment() {
             </div>
           )}
         </button>
+        )}
       </td>
     );
   };
@@ -627,6 +663,21 @@ export default function SupervisorAssignment() {
                               }`}>
                                 {(o.workflow_state || 'PENDING').replace(/_/g, ' ')}
                               </span>
+                              {o.workflow_state === 'ON_HOLD' && (
+                                <button
+                                  onClick={() => handleResume(o.id, o.project_id)}
+                                  disabled={resumingOrderId === o.id}
+                                  className="mt-1 flex items-center gap-1 mx-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors disabled:opacity-50"
+                                  title="Resume this order back to workflow"
+                                >
+                                  {resumingOrderId === o.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Play className="w-3 h-3" />
+                                  )}
+                                  Resume
+                                </button>
+                              )}
                             </td>
 
                           </motion.tr>

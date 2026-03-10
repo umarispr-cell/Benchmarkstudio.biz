@@ -6,7 +6,7 @@ import { useSmartPolling } from '../../hooks/useSmartPolling';
 import type { Order, WorkerDashboardData } from '../../types';
 import { REJECTION_CODES } from '../../types';
 import { AnimatedPage, PageHeader, StatCard, StatusBadge, Modal, Button, Select, Textarea, WorkerDashboardSkeleton } from '../../components/ui';
-import { Play, X, Clock, Target, Inbox, CheckCircle, History, BarChart3, TrendingUp, Loader2, ClipboardList, Pencil, Eye, Palette, Info } from 'lucide-react';
+import { Play, X, Clock, Target, Inbox, CheckCircle, History, BarChart3, TrendingUp, Loader2, ClipboardList, Pencil, Eye, Palette, Info, User as UserIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import DrawerWorkForm from '../../components/DrawerWorkForm';
 import CheckerWorkForm from '../../components/CheckerWorkForm';
@@ -72,6 +72,9 @@ export default function WorkerDashboard() {
   // Auto-assignment state
   const [autoAssigning, setAutoAssigning] = useState(false);
   
+  // Checker: all assigned orders list
+  const [checkerQueue, setCheckerQueue] = useState<Order[]>([]);
+  
   // Order started state (controls order ID visibility)
   const [orderStarted, setOrderStarted] = useState(false);
   const [startingOrder, setStartingOrder] = useState(false);
@@ -134,12 +137,23 @@ export default function WorkerDashboard() {
   // Critical data: worker dashboard + current order (runs on every poll)
   const loadCritical = useCallback(async () => {
     try {
-      const [dashRes, currentRes] = await Promise.all([
+      const promises: Promise<any>[] = [
         dashboardService.worker(),
         workflowService.myCurrent(),
-      ]);
+      ];
+      // Checkers: also fetch full queue so we can show all assigned orders
+      if (isChecker) {
+        promises.push(workflowService.getQueue());
+      }
+      const results = await Promise.all(promises);
+      const dashRes = results[0];
+      const currentRes = results[1];
       setData(dashRes.data);
       setCurrentOrder(currentRes.data.order);
+      // Update checker queue
+      if (isChecker && results[2]) {
+        setCheckerQueue(results[2].data?.orders || []);
+      }
       
       // Determine if order is already started (timer running or time spent)
       if (currentRes.data.order) {
@@ -158,7 +172,8 @@ export default function WorkerDashboard() {
       }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isChecker]);
 
   // Stats data: completed orders + performance (only on mount + manual refresh)
   const loadStats = useCallback(async () => {
@@ -646,7 +661,231 @@ export default function WorkerDashboard() {
           </div>
 
           {/* Current Order or Get Next */}
-          {currentOrder ? (
+          {isChecker ? (
+            /* ── CHECKER: Show ALL assigned orders in a list ── */
+            <>
+              {/* Active order being worked on */}
+              {currentOrder && orderStarted && (
+                <>
+                  {renderRoleInstructions()}
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white rounded-xl ring-2 ring-brand-500/30 overflow-hidden mb-6"
+                  >
+                    <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-brand-50/30">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-900">Currently Working On</h3>
+                        <p className="text-xs text-slate-400 mt-0.5">Complete this order or use the actions below</p>
+                      </div>
+                      <StatusBadge status={currentOrder.workflow_state} />
+                    </div>
+                    <div className="p-5">
+                      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-5">
+                        <div>
+                          <div className="text-xs text-slate-400 mb-1">Order #</div>
+                          <div className="text-sm font-semibold text-slate-900">{currentOrder.order_number}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-400 mb-1">Variant</div>
+                          <div className="text-sm font-semibold text-slate-900">{(currentOrder as any).VARIANT_no || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-400 mb-1">Priority</div>
+                          <StatusBadge status={currentOrder.priority} />
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-400 mb-1">Drawer</div>
+                          <div className="text-sm font-medium text-slate-700 flex items-center gap-1">
+                            <UserIcon className="w-3.5 h-3.5 text-blue-500" />
+                            {(currentOrder as any).drawer_name || '—'}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-400 mb-1">Address</div>
+                          <div className="text-sm font-medium text-slate-700 truncate" title={(currentOrder as any).address || '—'}>{(currentOrder as any).address || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-400 mb-1">Due In</div>
+                          {(() => {
+                            const ms = parseDueIn((currentOrder as any).due_in, currentOrder.received_at);
+                            if (ms === null) return <div className="text-sm font-medium text-slate-400">—</div>;
+                            const { label, overdue, hrs } = fmtCountdown(ms);
+                            const cls = overdue ? 'text-red-600' : hrs < 1 ? 'text-orange-600' : hrs < 4 ? 'text-yellow-600' : 'text-green-600';
+                            return (
+                              <div className={`text-sm font-bold flex items-center gap-1 ${cls}`}>
+                                <Clock className="w-3.5 h-3.5" />
+                                {label}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button onClick={() => setShowCheckerForm(true)} icon={<ClipboardList className="h-4 w-4" />} className="bg-brand-500 hover:bg-brand-600">
+                          Open Check Form
+                        </Button>
+                        <Button variant="danger" onClick={() => setShowReject(true)} icon={<X className="h-4 w-4" />}>
+                          Reject
+                        </Button>
+                        <Button variant="secondary" onClick={() => setShowHold(true)} icon={<Clock className="h-4 w-4" />}>
+                          Hold
+                        </Button>
+                      </div>
+                    </div>
+                  </motion.div>
+                </>
+              )}
+
+              {/* All assigned orders table */}
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-xl ring-1 ring-black/[0.04] overflow-hidden"
+              >
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">Assigned Orders</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {checkerQueue.length} order{checkerQueue.length !== 1 ? 's' : ''} assigned to you
+                    </p>
+                  </div>
+                </div>
+                {checkerQueue.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <div className="w-14 h-14 rounded-2xl bg-brand-50 flex items-center justify-center mb-4">
+                      <ClipboardList className="h-6 w-6 text-brand-500" />
+                    </div>
+                    <h3 className="text-[15px] font-semibold text-slate-700 mb-1">No orders in your queue</h3>
+                    <p className="text-sm text-slate-400">Orders will appear here when assigned to you</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-slate-50/80">
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600 text-xs uppercase tracking-wider">Order #</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600 text-xs uppercase tracking-wider">Variant</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600 text-xs uppercase tracking-wider">Priority</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600 text-xs uppercase tracking-wider">
+                            <span className="flex items-center gap-1"><UserIcon className="w-3.5 h-3.5" /> Drawer</span>
+                          </th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600 text-xs uppercase tracking-wider">Address</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600 text-xs uppercase tracking-wider">Due In</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600 text-xs uppercase tracking-wider">Status</th>
+                          <th className="px-4 py-3 text-center font-semibold text-slate-600 text-xs uppercase tracking-wider">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {checkerQueue.map((order) => {
+                          const isActive = currentOrder?.id === order.id && orderStarted;
+                          const isHeld = order.workflow_state === 'ON_HOLD' || order.is_on_hold;
+                          const ms = parseDueIn((order as any).due_in, order.received_at);
+                          const dueInfo = ms !== null ? fmtCountdown(ms) : null;
+                          const dueCls = dueInfo ? (dueInfo.overdue ? 'text-red-600' : dueInfo.hrs < 1 ? 'text-orange-600' : dueInfo.hrs < 4 ? 'text-yellow-600' : 'text-green-600') : '';
+                          return (
+                            <tr
+                              key={order.id}
+                              className={`hover:bg-slate-50 transition-colors ${isActive ? 'bg-brand-50/40 ring-1 ring-inset ring-brand-200' : ''} ${isHeld ? 'bg-orange-50/50' : ''}`}
+                            >
+                              <td className="px-4 py-3">
+                                <span className="font-semibold text-slate-900">{order.order_number}</span>
+                              </td>
+                              <td className="px-4 py-3 text-slate-600">{(order as any).VARIANT_no || '—'}</td>
+                              <td className="px-4 py-3"><StatusBadge status={order.priority} /></td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                                    <UserIcon className="w-3.5 h-3.5 text-blue-600" />
+                                  </div>
+                                  <span className="text-slate-700 font-medium">{(order as any).drawer_name || '—'}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate" title={(order as any).address || ''}>{(order as any).address || '—'}</td>
+                              <td className="px-4 py-3">
+                                {dueInfo ? (
+                                  <span className={`font-bold flex items-center gap-1 ${dueCls}`}>
+                                    <Clock className="w-3.5 h-3.5" />
+                                    {dueInfo.label}
+                                  </span>
+                                ) : <span className="text-slate-400">—</span>}
+                              </td>
+                              <td className="px-4 py-3"><StatusBadge status={order.workflow_state} size="sm" /></td>
+                              <td className="px-4 py-3 text-center">
+                                {isHeld ? (
+                                  <Button
+                                    size="sm"
+                                    onClick={async () => {
+                                      try {
+                                        setSubmitting(true);
+                                        await workflowService.resumeOrder(order.id, order.project_id);
+                                        loadData();
+                                      } catch (e: any) {
+                                        console.error(e);
+                                        alert(e?.response?.data?.message || 'Could not resume order.');
+                                      } finally {
+                                        setSubmitting(false);
+                                      }
+                                    }}
+                                    loading={submitting}
+                                    icon={<Play className="h-3.5 w-3.5" />}
+                                    className="bg-emerald-600 hover:bg-emerald-700"
+                                  >
+                                    Resume
+                                  </Button>
+                                ) : isActive ? (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => setShowCheckerForm(true)}
+                                    icon={<ClipboardList className="h-3.5 w-3.5" />}
+                                    className="bg-brand-500 hover:bg-brand-600"
+                                  >
+                                    Continue
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    onClick={async () => {
+                                      setStartingOrder(true);
+                                      try {
+                                        // If there's already a current order in progress, can't start a new one
+                                        if (currentOrder && orderStarted) {
+                                          alert('Please complete your current order first before starting another.');
+                                          return;
+                                        }
+                                        // Set this as the current order and start it
+                                        setCurrentOrder(order);
+                                        await workflowService.startTimer(order.id);
+                                        setOrderStarted(true);
+                                        setShowCheckerForm(true);
+                                      } catch (e: any) {
+                                        console.error(e);
+                                        // Still allow opening form even if timer fails
+                                        setCurrentOrder(order);
+                                        setOrderStarted(true);
+                                        setShowCheckerForm(true);
+                                      } finally {
+                                        setStartingOrder(false);
+                                      }
+                                    }}
+                                    loading={startingOrder}
+                                    icon={<Play className="h-3.5 w-3.5" />}
+                                    variant="secondary"
+                                  >
+                                    Start
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </motion.div>
+            </>
+          ) : currentOrder ? (
             <>
               {/* Role-specific instructions panel - only show after started */}
               {orderStarted && renderRoleInstructions()}

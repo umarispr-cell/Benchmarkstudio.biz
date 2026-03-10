@@ -411,14 +411,32 @@ class WorkflowController extends Controller
     public function resumeOrder(Request $request, int $id)
     {
         $user = $request->user();
-        $order = Order::findOrFailGlobal($id);
+
+        // Project-aware lookup to avoid ID collision across project tables
+        $projectId = $request->input('project_id');
+        if ($projectId) {
+            $order = Order::findInProject((int) $projectId, $id);
+            if (!$order) {
+                return response()->json(['message' => 'Order not found in the specified project.'], 404);
+            }
+        } else {
+            // Fallback: try user's project first, then global scan
+            $order = self::findOrderForUser($id, $user);
+        }
 
         if ($order->workflow_state !== 'ON_HOLD') {
             return response()->json(['message' => 'Order is not on hold.'], 422);
         }
 
-        if (!in_array($user->role, ['operations_manager', 'director', 'ceo'])) {
-            return response()->json(['message' => 'Only managers can resume held orders.'], 403);
+        // Allow managers, QA supervisors, and the assigned worker to resume
+        $isAssignedWorker = ($order->assigned_to === $user->id)
+            || ($order->drawer_id === $user->id)
+            || ($order->checker_id === $user->id)
+            || ($order->qa_id === $user->id);
+        $isManager = in_array($user->role, ['operations_manager', 'project_manager', 'qa_supervisor', 'director', 'ceo']);
+
+        if (!$isManager && !$isAssignedWorker) {
+            return response()->json(['message' => 'You are not allowed to resume this order.'], 403);
         }
 
         // Determine which queue to return to based on what state it was in before hold

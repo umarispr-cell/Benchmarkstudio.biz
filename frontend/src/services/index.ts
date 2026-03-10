@@ -97,8 +97,8 @@ export const workflowService = {
   // Hold/Resume
   holdOrder: (orderId: number, holdReason: string) =>
     api.post<{ order: Order }>(`/workflow/orders/${orderId}/hold`, { hold_reason: holdReason }),
-  resumeOrder: (orderId: number) =>
-    api.post<{ order: Order }>(`/workflow/orders/${orderId}/resume`),
+  resumeOrder: (orderId: number, projectId?: number) =>
+    api.post<{ order: Order }>(`/workflow/orders/${orderId}/resume`, projectId ? { project_id: projectId } : {}),
 
   // Order details (role-filtered by backend)
   orderDetails: (orderId: number) =>

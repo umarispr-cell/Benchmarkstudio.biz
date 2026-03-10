@@ -2211,8 +2211,9 @@ class DashboardController extends Controller
 
         $orders = (clone $query)
             ->orderByRaw("FIELD(priority, 'rush', 'urgent', 'high', 'normal', 'low', '') ASC")
-            ->orderByDesc('received_at')
-            ->orderByDesc('id')
+            ->orderByRaw("CASE WHEN due_in IS NOT NULL THEN TIMESTAMPDIFF(SECOND, NOW(), due_in) ELSE 999999999 END ASC")
+            ->orderBy('received_at', 'asc')
+            ->orderBy('id', 'asc')
             ->get();
         $total = $orders->count();
 
