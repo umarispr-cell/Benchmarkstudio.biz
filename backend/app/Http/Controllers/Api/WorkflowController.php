@@ -357,7 +357,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'order' => $order,
-            'message' => 'Order rejected and returned to queue.',
+            'message' => 'Order rejected successfully.',
         ]);
     }
 

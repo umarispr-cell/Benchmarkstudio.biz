@@ -228,6 +228,32 @@ class AssignmentEngine
                 'assigned_to' => null,
             ]);
 
+            // ── Sync rejection to crm_order_assignments ──
+            // The dashboard uses COALESCE(coa.workflow_state, qo.workflow_state)
+            // so CRM overlay must also reflect the REJECTED state.
+            $existingCrm = DB::table('crm_order_assignments')
+                ->where('project_id', $order->project_id)
+                ->where('order_number', $order->order_number)
+                ->first();
+
+            $crmData = [
+                'workflow_state' => $targetState,
+                'assigned_to'    => null,
+                'updated_at'     => now(),
+            ];
+
+            if ($existingCrm) {
+                DB::table('crm_order_assignments')
+                    ->where('id', $existingCrm->id)
+                    ->update($crmData);
+            } else {
+                DB::table('crm_order_assignments')->insert(array_merge($crmData, [
+                    'project_id'   => $order->project_id,
+                    'order_number' => $order->order_number,
+                    'created_at'   => now(),
+                ]));
+            }
+
             // Update actor stats (safely prevent negative values)
             if ($actor->wip_count > 0) {
                 $actor->decrement('wip_count');
