@@ -72,8 +72,8 @@ export default function WorkerDashboard() {
   // Auto-assignment state
   const [autoAssigning, setAutoAssigning] = useState(false);
   
-  // Checker: all assigned orders list
-  const [checkerQueue, setCheckerQueue] = useState<Order[]>([]);
+  // Checker/QA: all assigned orders list
+  const [roleQueue, setRoleQueue] = useState<Order[]>([]);
   
   // Order started state (controls order ID visibility)
   const [orderStarted, setOrderStarted] = useState(false);
@@ -141,8 +141,8 @@ export default function WorkerDashboard() {
         dashboardService.worker(),
         workflowService.myCurrent(),
       ];
-      // Checkers: also fetch full queue so we can show all assigned orders
-      if (isChecker) {
+      // Checkers & QA: also fetch full queue so we can show all assigned orders
+      if (isChecker || isQA) {
         promises.push(workflowService.getQueue());
       }
       const results = await Promise.all(promises);
@@ -150,9 +150,9 @@ export default function WorkerDashboard() {
       const currentRes = results[1];
       setData(dashRes.data);
       setCurrentOrder(currentRes.data.order);
-      // Update checker queue
-      if (isChecker && results[2]) {
-        setCheckerQueue(results[2].data?.orders || []);
+      // Update checker/QA queue
+      if ((isChecker || isQA) && results[2]) {
+        setRoleQueue(results[2].data?.orders || []);
       }
       
       // Determine if order is already started (timer running or time spent)
@@ -661,8 +661,8 @@ export default function WorkerDashboard() {
           </div>
 
           {/* Current Order or Get Next */}
-          {isChecker ? (
-            /* ── CHECKER: Show ALL assigned orders in a list ── */
+          {(isChecker || isQA) ? (
+            /* ── CHECKER / QA: Show ALL assigned orders in a list ── */
             <>
               {/* Active order being worked on */}
               {currentOrder && orderStarted && (
@@ -701,6 +701,15 @@ export default function WorkerDashboard() {
                             {(currentOrder as any).drawer_name || '—'}
                           </div>
                         </div>
+                        {isQA && (
+                          <div>
+                            <div className="text-xs text-slate-400 mb-1">Checker</div>
+                            <div className="text-sm font-medium text-slate-700 flex items-center gap-1">
+                              <UserIcon className="w-3.5 h-3.5 text-purple-500" />
+                              {(currentOrder as any).checker_name || '—'}
+                            </div>
+                          </div>
+                        )}
                         <div>
                           <div className="text-xs text-slate-400 mb-1">Address</div>
                           <div className="text-sm font-medium text-slate-700 truncate" title={(currentOrder as any).address || '—'}>{(currentOrder as any).address || '—'}</div>
@@ -722,8 +731,8 @@ export default function WorkerDashboard() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button onClick={() => setShowCheckerForm(true)} icon={<ClipboardList className="h-4 w-4" />} className="bg-brand-500 hover:bg-brand-600">
-                          Open Check Form
+                        <Button onClick={() => isQA ? setShowQAForm(true) : setShowCheckerForm(true)} icon={<ClipboardList className="h-4 w-4" />} className="bg-brand-500 hover:bg-brand-600">
+                          {isQA ? 'Open QA Review' : 'Open Check Form'}
                         </Button>
                         <Button variant="danger" onClick={() => setShowReject(true)} icon={<X className="h-4 w-4" />}>
                           Reject
@@ -747,11 +756,11 @@ export default function WorkerDashboard() {
                   <div>
                     <h3 className="text-sm font-semibold text-slate-900">Assigned Orders</h3>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {checkerQueue.length} order{checkerQueue.length !== 1 ? 's' : ''} assigned to you
+                      {roleQueue.length} order{roleQueue.length !== 1 ? 's' : ''} assigned to you
                     </p>
                   </div>
                 </div>
-                {checkerQueue.length === 0 ? (
+                {roleQueue.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16">
                     <div className="w-14 h-14 rounded-2xl bg-brand-50 flex items-center justify-center mb-4">
                       <ClipboardList className="h-6 w-6 text-brand-500" />
@@ -770,6 +779,11 @@ export default function WorkerDashboard() {
                           <th className="px-4 py-3 text-left font-semibold text-slate-600 text-xs uppercase tracking-wider">
                             <span className="flex items-center gap-1"><UserIcon className="w-3.5 h-3.5" /> Drawer</span>
                           </th>
+                          {isQA && (
+                            <th className="px-4 py-3 text-left font-semibold text-slate-600 text-xs uppercase tracking-wider">
+                              <span className="flex items-center gap-1"><UserIcon className="w-3.5 h-3.5" /> Checker</span>
+                            </th>
+                          )}
                           <th className="px-4 py-3 text-left font-semibold text-slate-600 text-xs uppercase tracking-wider">Address</th>
                           <th className="px-4 py-3 text-left font-semibold text-slate-600 text-xs uppercase tracking-wider">Due In</th>
                           <th className="px-4 py-3 text-left font-semibold text-slate-600 text-xs uppercase tracking-wider">Status</th>
@@ -777,7 +791,7 @@ export default function WorkerDashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {checkerQueue.map((order) => {
+                        {roleQueue.map((order) => {
                           const isActive = currentOrder?.id === order.id && orderStarted;
                           const isHeld = order.workflow_state === 'ON_HOLD' || order.is_on_hold;
                           const ms = parseDueIn((order as any).due_in, order.received_at);
@@ -801,6 +815,16 @@ export default function WorkerDashboard() {
                                   <span className="text-slate-700 font-medium">{(order as any).drawer_name || '—'}</span>
                                 </div>
                               </td>
+                              {isQA && (
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-1.5">
+                                    <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+                                      <UserIcon className="w-3.5 h-3.5 text-purple-600" />
+                                    </div>
+                                    <span className="text-slate-700 font-medium">{(order as any).checker_name || '—'}</span>
+                                  </div>
+                                </td>
+                              )}
                               <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate" title={(order as any).address || ''}>{(order as any).address || '—'}</td>
                               <td className="px-4 py-3">
                                 {dueInfo ? (
@@ -836,7 +860,7 @@ export default function WorkerDashboard() {
                                 ) : isActive ? (
                                   <Button
                                     size="sm"
-                                    onClick={() => setShowCheckerForm(true)}
+                                    onClick={() => isQA ? setShowQAForm(true) : setShowCheckerForm(true)}
                                     icon={<ClipboardList className="h-3.5 w-3.5" />}
                                     className="bg-brand-500 hover:bg-brand-600"
                                   >
@@ -857,13 +881,13 @@ export default function WorkerDashboard() {
                                         setCurrentOrder(order);
                                         await workflowService.startTimer(order.id);
                                         setOrderStarted(true);
-                                        setShowCheckerForm(true);
+                                        if (isQA) setShowQAForm(true); else setShowCheckerForm(true);
                                       } catch (e: any) {
                                         console.error(e);
                                         // Still allow opening form even if timer fails
                                         setCurrentOrder(order);
                                         setOrderStarted(true);
-                                        setShowCheckerForm(true);
+                                        if (isQA) setShowQAForm(true); else setShowCheckerForm(true);
                                       } finally {
                                         setStartingOrder(false);
                                       }
