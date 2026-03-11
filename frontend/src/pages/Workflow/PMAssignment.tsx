@@ -185,7 +185,7 @@ export default function PMAssignment() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <div className="bg-white rounded-xl border border-slate-200/60 p-4">
             <div className="text-2xl font-bold text-slate-900">{orders.length}</div>
             <div className="text-xs text-slate-500">Pending Assignment</div>
@@ -195,8 +195,16 @@ export default function PMAssignment() {
             <div className="text-xs text-slate-500">Urgent</div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200/60 p-4">
+            <div className="text-2xl font-bold text-purple-600">{orders.filter(o => (o.priority as string) === 'rush').length}</div>
+            <div className="text-xs text-slate-500">Rush</div>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200/60 p-4">
             <div className="text-2xl font-bold text-amber-600">{orders.filter(o => o.priority === 'high').length}</div>
             <div className="text-xs text-slate-500">High Priority</div>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200/60 p-4">
+            <div className="text-2xl font-bold text-slate-600">{orders.filter(o => !o.priority || o.priority === 'normal' || (o.priority as string) === '').length}</div>
+            <div className="text-xs text-slate-500">Normal</div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200/60 p-4">
             <div className="text-2xl font-bold text-brand-600">{qaUsers.length}</div>

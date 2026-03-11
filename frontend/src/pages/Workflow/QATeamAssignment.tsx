@@ -289,6 +289,19 @@ export default function QATeamAssignment() {
           </div>
         </div>
 
+        {/* Priority Breakdown */}
+        <div className="bg-white rounded-xl border border-slate-200/60 px-4 py-2.5 flex items-center gap-4 flex-wrap text-xs">
+          <span className="font-bold text-slate-700">Priority:</span>
+          <span className="font-semibold text-red-600">High: {orders.filter(o => (o.priority || '').toLowerCase() === 'high').length}</span>
+          <span className="font-semibold text-slate-600">Normal: {orders.filter(o => !o.priority || (o.priority || '').toLowerCase() === 'normal' || (o.priority as string) === '').length}</span>
+          {orders.filter(o => (o.priority || '').toLowerCase() === 'rush').length > 0 && (
+            <span className="font-semibold text-purple-600">Rush: {orders.filter(o => (o.priority || '').toLowerCase() === 'rush').length}</span>
+          )}
+          {orders.filter(o => (o.priority || '').toLowerCase() === 'urgent').length > 0 && (
+            <span className="font-semibold text-orange-600">Urgent: {orders.filter(o => (o.priority || '').toLowerCase() === 'urgent').length}</span>
+          )}
+        </div>
+
         {/* Team Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Drawers */}

@@ -490,10 +490,19 @@ export default function LiveQADashboard() {
 
       {/* ═══ TODAY TOTAL COUNTER ═══ */}
       {activeTab === 'overview' && (
-        <div className="bg-brand-50/60 border border-brand-100 rounded-xl px-4 py-2.5 mb-4 flex items-center justify-center gap-2">
+        <div className="bg-brand-50/60 border border-brand-100 rounded-xl px-4 py-2.5 mb-4 flex items-center justify-center gap-3 flex-wrap">
           <span className="text-sm font-medium text-brand-700">
             Today Total Properties: <span className="text-lg font-bold text-brand-800">{counts.today_total}</span>
           </span>
+          <span className="text-slate-300">|</span>
+          <span className="text-sm font-semibold text-red-600">High: {orders.filter(o => (o.priority || '').toLowerCase() === 'high').length}</span>
+          <span className="text-sm font-semibold text-slate-600">Normal: {orders.filter(o => !o.priority || (o.priority || '').toLowerCase() === 'normal' || o.priority === '').length}</span>
+          {orders.filter(o => (o.priority || '').toLowerCase() === 'rush').length > 0 && (
+            <span className="text-sm font-semibold text-purple-600">Rush: {orders.filter(o => (o.priority || '').toLowerCase() === 'rush').length}</span>
+          )}
+          {orders.filter(o => (o.priority || '').toLowerCase() === 'urgent').length > 0 && (
+            <span className="text-sm font-semibold text-orange-600">Urgent: {orders.filter(o => (o.priority || '').toLowerCase() === 'urgent').length}</span>
+          )}
         </div>
       )}
 
