@@ -1246,13 +1246,22 @@ class DashboardController extends Controller
         if ($user->project_id) {
             $project = $user->project;
             if ($project) {
-                // Count new-system QUEUED_* states
+                // Count new-system QUEUED_* states — only orders assigned to THIS user
                 $queueStates = StateMachine::getQueuedStates($project->workflow_type ?? 'FP_3_LAYER');
+                $roleIdColMap = ['drawer' => 'drawer_id', 'checker' => 'checker_id', 'qa' => 'qa_id', 'designer' => 'drawer_id'];
+                $userIdCol = $roleIdColMap[$user->role] ?? null;
                 foreach ($queueStates as $state) {
                     $role = StateMachine::getRoleForState($state);
                     if ($role === $user->role) {
                         $queueCount += Order::forProject($user->project_id)
-                            ->where('workflow_state', $state)->count();
+                            ->where('workflow_state', $state)
+                            ->where(function ($q) use ($user, $userIdCol) {
+                                $q->where('assigned_to', $user->id);
+                                if ($userIdCol) {
+                                    $q->orWhere($userIdCol, $user->id);
+                                }
+                            })
+                            ->count();
                     }
                 }
 
