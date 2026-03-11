@@ -215,22 +215,18 @@ class AssignmentEngine
                 'recheck_count'    => $order->recheck_count + 1,
             ]);
 
-            // Transition to rejected state
+            // Transition to rejected state — stays here until manager re-queues
+            // from the Rejected Orders page
             StateMachine::transition($order, $targetState, $actor->id, [
                 'rejection_reason' => $reason,
                 'rejection_code'   => $rejectionCode,
+                'route_to'         => $routeTo,
             ]);
 
-            // Route to the appropriate queue
-            if ($targetState === 'REJECTED_BY_CHECK') {
-                StateMachine::transition($order, 'QUEUED_DRAW', $actor->id);
-            } elseif ($targetState === 'REJECTED_BY_QA') {
-                $target = ($routeTo === 'draw') ? 'QUEUED_DRAW' : 'QUEUED_CHECK';
-                if ($order->workflow_type === 'PH_2_LAYER') {
-                    $target = 'QUEUED_DESIGN';
-                }
-                StateMachine::transition($order, $target, $actor->id);
-            }
+            // Clear assignment so order appears unassigned on the Rejected page
+            $order->update([
+                'assigned_to' => null,
+            ]);
 
             // Update actor stats (safely prevent negative values)
             if ($actor->wip_count > 0) {

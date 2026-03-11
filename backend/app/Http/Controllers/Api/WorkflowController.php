@@ -1247,13 +1247,31 @@ class WorkflowController extends Controller
         // If reassigning to null, return to queue
         if (!$request->input('user_id')) {
             $queueState = str_replace('IN_', 'QUEUED_', $order->workflow_state);
-            if (str_starts_with($order->workflow_state, 'IN_')) {
-                DB::transaction(function () use ($order, $oldAssignee, $queueState, $actor, $request) {
-                    // Abandon current work item
-                    WorkItem::where('order_id', $order->id)
-                        ->where('assigned_user_id', $oldAssignee)
-                        ->where('status', 'in_progress')
-                        ->update(['status' => 'abandoned', 'completed_at' => now()]);
+            $isInProgress = str_starts_with($order->workflow_state, 'IN_');
+            $isRejected = in_array($order->workflow_state, ['REJECTED_BY_CHECK', 'REJECTED_BY_QA']);
+
+            // Map rejected states to the correct queue
+            if ($isRejected) {
+                if ($order->workflow_state === 'REJECTED_BY_CHECK') {
+                    $queueState = 'QUEUED_DRAW';
+                } else {
+                    // REJECTED_BY_QA → default to QUEUED_CHECK, or QUEUED_DRAW if route specified
+                    $queueState = 'QUEUED_CHECK';
+                    if ($order->workflow_type === 'PH_2_LAYER') {
+                        $queueState = 'QUEUED_DESIGN';
+                    }
+                }
+            }
+
+            if ($isInProgress || $isRejected) {
+                DB::transaction(function () use ($order, $oldAssignee, $queueState, $actor, $request, $isInProgress) {
+                    if ($isInProgress) {
+                        // Abandon current work item
+                        WorkItem::where('order_id', $order->id)
+                            ->where('assigned_user_id', $oldAssignee)
+                            ->where('status', 'in_progress')
+                            ->update(['status' => 'abandoned', 'completed_at' => now()]);
+                    }
 
                     // Safely decrement old assignee's wip_count
                     if ($oldAssignee) {

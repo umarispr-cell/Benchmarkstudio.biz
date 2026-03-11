@@ -664,6 +664,7 @@ export default function SupervisorAssignment() {
                               <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${
                                 o.workflow_state?.includes('COMPLETE') || o.workflow_state?.includes('DELIVER') ? 'bg-green-100 text-green-700'
                                 : o.workflow_state?.includes('HOLD') ? 'bg-red-100 text-red-700'
+                                : o.workflow_state?.includes('REJECTED') ? 'bg-rose-100 text-rose-700'
                                 : o.workflow_state?.includes('CHECK') ? 'bg-blue-100 text-blue-700'
                                 : o.workflow_state?.includes('QA') ? 'bg-purple-100 text-purple-700'
                                 : o.workflow_state?.includes('DRAW') ? 'bg-brand-100 text-brand-700'
