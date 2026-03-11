@@ -538,6 +538,14 @@ export default function SupervisorAssignment() {
                   {Object.entries(roleCompletions).map(([role, rc]) => (
                     <span key={role} className="text-slate-500 capitalize">{role}: <b className="text-slate-700">{rc.today_completed}</b></span>
                   ))}
+                  <span className="border-l border-slate-300 pl-4 text-red-600 font-semibold">High: {orders.filter(o => o.priority === 'high' || o.priority === 'HIGH').length}</span>
+                  <span className="text-slate-600 font-semibold">Normal: {orders.filter(o => !o.priority || o.priority === 'normal' || o.priority === 'NORMAL' || o.priority === '').length}</span>
+                  {orders.filter(o => o.priority === 'rush' || o.priority === 'RUSH').length > 0 && (
+                    <span className="text-purple-600 font-semibold">Rush: {orders.filter(o => o.priority === 'rush' || o.priority === 'RUSH').length}</span>
+                  )}
+                  {orders.filter(o => o.priority === 'urgent' || o.priority === 'URGENT').length > 0 && (
+                    <span className="text-orange-600 font-semibold">Urgent: {orders.filter(o => o.priority === 'urgent' || o.priority === 'URGENT').length}</span>
+                  )}
                 </div>
                 {statsOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
               </button>
