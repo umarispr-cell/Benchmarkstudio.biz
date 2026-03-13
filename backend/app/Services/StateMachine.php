@@ -156,6 +156,37 @@ class StateMachine
 
         $order->update($updates);
 
+        // ── Always keep CRM overlay's workflow_state in sync ──
+        // This catches ALL state transitions (startTimer, hold, resume, etc.)
+        // regardless of whether the caller also invokes syncToProjectTable.
+        try {
+            $crmRow = \Illuminate\Support\Facades\DB::table('crm_order_assignments')
+                ->where('project_id', $order->project_id)
+                ->where('order_number', $order->order_number)
+                ->first();
+            if ($crmRow) {
+                $crmUpdates = [
+                    'workflow_state' => $toState,
+                    'updated_at'    => now(),
+                ];
+                if (array_key_exists('assigned_to', $updates)) {
+                    $crmUpdates['assigned_to'] = $updates['assigned_to'];
+                }
+                if (isset($updates['is_on_hold'])) {
+                    $crmUpdates['is_on_hold'] = $updates['is_on_hold'];
+                }
+                \Illuminate\Support\Facades\DB::table('crm_order_assignments')
+                    ->where('id', $crmRow->id)
+                    ->update($crmUpdates);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('StateMachine CRM sync failed', [
+                'order_id' => $order->id,
+                'to_state' => $toState,
+                'error'    => $e->getMessage(),
+            ]);
+        }
+
         // Audit log
         AuditService::log(
             $actorUserId,
