@@ -233,15 +233,15 @@ export default function PMAssignment() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-xs" style={{ tableLayout: 'fixed', minWidth: '750px' }}>
+              <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
                 <colgroup>
-                  <col style={{ width: '90px' }} />{/* Order */}
-                  <col style={{ width: '100px' }} />{/* Variant */}
+                  <col style={{ width: '8%' }} />{/* Order */}
+                  <col style={{ width: '10%' }} />{/* Variant */}
                   <col />{/* Address — takes remaining space */}
-                  <col style={{ width: '70px' }} />{/* Priority */}
-                  <col style={{ width: '80px' }} />{/* Received */}
-                  <col style={{ width: '80px' }} />{/* State */}
-                  <col style={{ width: '140px' }} />{/* QA Supervisor */}
+                  <col style={{ width: '7%' }} />{/* Priority */}
+                  <col style={{ width: '8%' }} />{/* Received */}
+                  <col style={{ width: '9%' }} />{/* State */}
+                  <col style={{ width: '15%' }} />{/* QA Supervisor */}
                 </colgroup>
                 <thead>
                   <tr className="bg-brand-700 text-white">

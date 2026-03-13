@@ -371,17 +371,17 @@ export default function QATeamAssignment() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-xs" style={{ tableLayout: 'fixed', minWidth: '1000px' }}>
+              <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
                 <colgroup>
-                  <col style={{ width: '90px' }} />{/* Order */}
-                  <col style={{ width: '100px' }} />{/* Variant */}
+                  <col style={{ width: '7.5%' }} />{/* Order */}
+                  <col style={{ width: '9%' }} />{/* Variant */}
                   <col />{/* Address — takes remaining space */}
-                  <col style={{ width: '70px' }} />{/* Priority */}
-                  <col style={{ width: '80px' }} />{/* Received */}
-                  <col style={{ width: '80px' }} />{/* State */}
-                  <col style={{ width: '120px' }} />{/* Drawer */}
-                  <col style={{ width: '120px' }} />{/* Checker */}
-                  <col style={{ width: '85px' }} />{/* Status */}
+                  <col style={{ width: '5.5%' }} />{/* Priority */}
+                  <col style={{ width: '7%' }} />{/* Received */}
+                  <col style={{ width: '7%' }} />{/* State */}
+                  <col style={{ width: '14%' }} />{/* Drawer */}
+                  <col style={{ width: '14%' }} />{/* Checker */}
+                  <col style={{ width: '8%' }} />{/* Status */}
                 </colgroup>
                 <thead>
                   <tr className="bg-brand-700 text-white">

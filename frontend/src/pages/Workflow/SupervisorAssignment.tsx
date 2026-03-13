@@ -597,17 +597,17 @@ export default function SupervisorAssignment() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-xs" style={{ tableLayout: 'fixed', minWidth: '1050px' }}>
+                  <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
                     <colgroup>
-                      <col style={{ width: '70px' }} />{/* Date */}
-                      <col style={{ width: '90px' }} />{/* Order */}
-                      <col style={{ width: '100px' }} />{/* Variant */}
+                      <col style={{ width: '6%' }} />{/* Date */}
+                      <col style={{ width: '7.5%' }} />{/* Order */}
+                      <col style={{ width: '9%' }} />{/* Variant */}
                       <col />{/* Address — takes remaining space */}
-                      <col style={{ width: '70px' }} />{/* Priority */}
-                      <col style={{ width: '120px' }} />{/* Drawer */}
-                      <col style={{ width: '120px' }} />{/* Checker */}
-                      <col style={{ width: '120px' }} />{/* QA */}
-                      <col style={{ width: '85px' }} />{/* Status */}
+                      <col style={{ width: '5.5%' }} />{/* Priority */}
+                      <col style={{ width: '13%' }} />{/* Drawer */}
+                      <col style={{ width: '13%' }} />{/* Checker */}
+                      <col style={{ width: '13%' }} />{/* QA */}
+                      <col style={{ width: '8%' }} />{/* Status */}
                     </colgroup>
                     <thead>
                       <tr className="bg-brand-700 text-white">
