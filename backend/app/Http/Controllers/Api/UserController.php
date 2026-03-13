@@ -25,18 +25,20 @@ class UserController extends Controller
             // CEO only sees Directors and Operations Managers
             $query->whereIn('role', ['director', 'operations_manager']);
         } elseif ($authUser->role === 'project_manager') {
-            // PM sees workers in their managed projects / team — NOT other PMs
+            // PM sees only users in their own team — NOT other PMs or other teams
             $query->where('id', '!=', $authUser->id);
             $query->where('role', '!=', 'project_manager');
-            $managedIds = $authUser->getManagedProjectIds();
-            $query->where(function ($q) use ($managedIds, $authUser) {
-                if ($authUser->team_id) {
-                    $q->where('team_id', $authUser->team_id);
-                }
+            if ($authUser->team_id) {
+                $query->where('team_id', $authUser->team_id);
+            } else {
+                // Fallback: PM without team sees managed-project workers
+                $managedIds = $authUser->getManagedProjectIds();
                 if (!empty($managedIds)) {
-                    $q->orWhereIn('project_id', $managedIds);
+                    $query->whereIn('project_id', $managedIds);
+                } else {
+                    $query->whereRaw('0 = 1'); // no results
                 }
-            });
+            }
         } elseif ($authUser->role === 'operations_manager') {
             // OM sees all staff (excluding CEO/director) — they manage everyone below
             $query->whereNotIn('role', ['ceo', 'director']);
