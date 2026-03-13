@@ -140,7 +140,7 @@ export default function PMAssignment() {
           {qaName ? (
             <>
               <div className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0">{qaName.charAt(0)}</div>
-              <span className="text-slate-700 truncate max-w-[120px]">{qaName}</span>
+              <span className="text-slate-700 whitespace-nowrap">{qaName}</span>
             </>
           ) : (
             <span className="text-slate-300 group-hover:text-brand-500 text-xs">— assign</span>

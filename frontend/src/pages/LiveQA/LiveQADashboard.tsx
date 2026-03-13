@@ -665,7 +665,7 @@ export default function LiveQADashboard() {
                             <td className="px-3 py-2 text-center">
                               {order.drawer_name ? (
                                 <div className="flex items-center justify-center gap-1.5">
-                                  <span className="text-xs font-medium text-slate-800 truncate max-w-[100px]">
+                                  <span className="text-xs font-medium text-slate-800 whitespace-nowrap">
                                     {String(order.drawer_name ?? '')}
                                   </span>
                                   {hasDrawerDone && (
@@ -711,7 +711,7 @@ export default function LiveQADashboard() {
                             <td className={`px-3 py-2 text-center ${checkerWaiting ? 'bg-slate-50' : ''}`}>
                               {order.checker_name ? (
                                 <div className="flex items-center justify-center gap-1.5">
-                                  <span className="text-xs font-medium text-slate-800 truncate max-w-[100px]">
+                                  <span className="text-xs font-medium text-slate-800 whitespace-nowrap">
                                     {String(order.checker_name ?? '')}
                                   </span>
                                   {hasCheckerDone && (

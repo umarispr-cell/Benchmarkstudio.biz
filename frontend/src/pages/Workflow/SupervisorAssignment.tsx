@@ -311,7 +311,7 @@ export default function SupervisorAssignment() {
             {name ? (
               <>
                 <div className={`w-5 h-5 rounded-full ${isDone ? 'bg-green-500' : color} text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0`}>{isDone ? '✓' : name.charAt(0)}</div>
-                <span className={`truncate max-w-[90px] ${isDone ? 'text-green-700 font-medium' : 'text-slate-700'}`}>{name}</span>
+                <span className={`whitespace-nowrap ${isDone ? 'text-green-700 font-medium' : 'text-slate-700'}`}>{name}</span>
                 {isDone && <span className="text-green-500 text-[10px] font-bold ml-0.5">✓</span>}
               </>
             ) : (

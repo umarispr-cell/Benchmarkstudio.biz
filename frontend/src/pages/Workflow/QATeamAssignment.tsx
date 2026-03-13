@@ -184,7 +184,7 @@ export default function QATeamAssignment() {
               {name ? (
                 <>
                   <div className={`w-5 h-5 rounded-full ${color} text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0`}>{name.charAt(0)}</div>
-                  <span className="text-slate-700 truncate max-w-[100px]">{name}</span>
+                  <span className="text-slate-700 whitespace-nowrap">{name}</span>
                 </>
               ) : (
                 <span className="text-slate-300 group-hover:text-brand-500 text-xs">— assign</span>
@@ -200,7 +200,7 @@ export default function QATeamAssignment() {
           <div className="flex flex-col cursor-default opacity-80" title={`${role} completed — cannot reassign`}>
             <div className="flex items-center gap-1">
               <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0">✓</div>
-              <span className="text-emerald-600 truncate max-w-[100px]">{name}</span>
+              <span className="text-emerald-600 whitespace-nowrap">{name}</span>
             </div>
             {duration && (
               <div className="text-[10px] text-emerald-400 ml-6 mt-0.5 flex items-center gap-0.5">
@@ -212,7 +212,7 @@ export default function QATeamAssignment() {
           <div className="flex flex-col">
             <div className="flex items-center gap-1">
               <div className={`w-5 h-5 rounded-full ${color} text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0`}>{name.charAt(0)}</div>
-              <span className="text-slate-700 truncate max-w-[100px]">{name}</span>
+              <span className="text-slate-700 whitespace-nowrap">{name}</span>
             </div>
             {duration && (
               <div className="text-[10px] text-slate-400 ml-6 mt-0.5 flex items-center gap-0.5">
