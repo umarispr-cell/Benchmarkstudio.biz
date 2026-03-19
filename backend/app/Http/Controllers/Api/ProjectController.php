@@ -10,6 +10,8 @@ use App\Models\Project;
 use App\Models\Team;
 use App\Services\ProjectOrderService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ProjectController extends Controller
 {
@@ -144,11 +146,36 @@ class ProjectController extends Controller
     {
         $project = Project::findOrFail($id);
 
+        $tableName = ProjectOrderService::getTableName((int) $project->id);
+        $totalOrders = 0;
+        $pendingOrders = 0;
+        $inProgressOrders = 0;
+        $completedOrders = 0;
+
+        if (Schema::hasTable($tableName)) {
+            $ordersWithOverlay = DB::table("{$tableName} as po")
+                ->leftJoin('crm_order_assignments as coa', function ($join) {
+                    $join->on('po.project_id', '=', 'coa.project_id')
+                        ->on('po.order_number', '=', 'coa.order_number');
+                })
+                ->where('po.project_id', $project->id)
+                ->selectRaw('COUNT(*) as total_orders')
+                ->selectRaw("SUM(CASE WHEN COALESCE(coa.workflow_state, po.workflow_state) = 'DELIVERED' THEN 1 ELSE 0 END) as completed_orders")
+                ->selectRaw("SUM(CASE WHEN COALESCE(coa.workflow_state, po.workflow_state) LIKE 'IN\\_%' THEN 1 ELSE 0 END) as in_progress_orders")
+                ->selectRaw("SUM(CASE WHEN COALESCE(coa.workflow_state, po.workflow_state) NOT IN ('DELIVERED', 'CANCELLED') AND COALESCE(coa.workflow_state, po.workflow_state) NOT LIKE 'IN\\_%' THEN 1 ELSE 0 END) as pending_orders")
+                ->first();
+
+            $totalOrders = (int) ($ordersWithOverlay->total_orders ?? 0);
+            $pendingOrders = (int) ($ordersWithOverlay->pending_orders ?? 0);
+            $inProgressOrders = (int) ($ordersWithOverlay->in_progress_orders ?? 0);
+            $completedOrders = (int) ($ordersWithOverlay->completed_orders ?? 0);
+        }
+
         $stats = [
-            'total_orders' => $project->orders()->count(),
-            'pending_orders' => $project->orders()->where('status', 'pending')->count(),
-            'in_progress_orders' => $project->orders()->where('status', 'in-progress')->count(),
-            'completed_orders' => $project->orders()->where('status', 'completed')->count(),
+            'total_orders' => $totalOrders,
+            'pending_orders' => $pendingOrders,
+            'in_progress_orders' => $inProgressOrders,
+            'completed_orders' => $completedOrders,
             'total_teams' => $project->teams()->count(),
             'active_teams' => $project->teams()->where('is_active', true)->count(),
             'total_staff' => $project->users()->count(),
