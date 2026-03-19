@@ -8,7 +8,7 @@ import ChecklistModal from '../../components/ChecklistModal';
 import {
   Users, RefreshCw, Info, Search, Clock, AlertTriangle,
   Loader2, X, BarChart3, PanelLeftClose, PanelLeftOpen,
-  Pencil, CheckSquare, Eye, ShieldCheck, ChevronDown, ChevronUp, Play,
+  Pencil, CheckSquare, Eye, ShieldCheck, ChevronDown, ChevronUp, Play, CalendarRange,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ClockDisplay from '../../components/ClockDisplay';
@@ -38,7 +38,9 @@ export default function SupervisorAssignment() {
   /* ── filters ── */
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [selectedWorker, setSelectedWorker] = useState<number | null>(null);
   const [workerRoleFilter, setWorkerRoleFilter] = useState<string | null>(null);
 
@@ -73,7 +75,9 @@ export default function SupervisorAssignment() {
       const params: any = { per_page: 10000 };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (searchQuery) params.search = searchQuery;
-      if (dateFilter) params.date = dateFilter;
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
+      if (!dateFrom && !dateTo) params.date = new Date().toISOString().split('T')[0];
       if (selectedWorker) params.assigned_to = selectedWorker;
       const res = await dashboardService.assignmentDashboard(selectedQueue, params);
       const d = res.data;
@@ -88,7 +92,7 @@ export default function SupervisorAssignment() {
       if ((d.project as any)?.timezone) setProjectTz((d.project as any).timezone);
     } catch (e) { console.error(e); }
     finally { setLoading(false); setRefreshing(false); }
-  }, [selectedQueue, statusFilter, searchQuery, dateFilter, selectedWorker]);
+  }, [selectedQueue, statusFilter, searchQuery, dateFrom, dateTo, selectedWorker]);
 
   useEffect(() => { loadData(1); }, [loadData]);
 
@@ -516,11 +520,52 @@ export default function SupervisorAssignment() {
                 {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2"><X className="w-3 h-3 text-slate-400" /></button>}
               </div>
 
-              {/* Date filter */}
-              <input type="date" value={dateFilter} onChange={e => { setDateFilter(e.target.value); }}
-                className="input text-xs h-8 w-36" title="Filter by date" />
-              {(dateFilter || selectedWorker) && (
-                <button onClick={() => { setDateFilter(''); setSelectedWorker(null); setSearchQuery(''); setStatusFilter('all'); }}
+              {/* Date range filter */}
+              <div className="relative">
+                <button onClick={() => setDatePickerOpen(!datePickerOpen)}
+                  className={`flex items-center gap-1.5 px-3 h-8 rounded-lg border text-xs transition-colors ${
+                    dateFrom || dateTo ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                  }`}>
+                  <CalendarRange className="w-3.5 h-3.5" />
+                  {dateFrom || dateTo ? (
+                    <span className="font-medium">
+                      {dateFrom ? new Date(dateFrom + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '...'}
+                      {' — '}
+                      {dateTo ? new Date(dateTo + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '...'}
+                    </span>
+                  ) : <span>Date Range</span>}
+                  <ChevronDown className={`w-3 h-3 transition-transform ${datePickerOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {datePickerOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setDatePickerOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1 z-40 bg-white rounded-xl shadow-xl border border-slate-200 p-3 w-72">
+                      <div className="text-xs font-semibold text-slate-700 mb-2">Filter by Date Range</div>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[10px] text-slate-500 font-medium">From</label>
+                          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                            title="Date from" className="input text-xs h-8 w-full mt-0.5" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-slate-500 font-medium">To</label>
+                          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                            min={dateFrom || undefined}
+                            title="Date to" className="input text-xs h-8 w-full mt-0.5" />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-100">
+                        <button onClick={() => { setDateFrom(''); setDateTo(''); }}
+                          className="flex-1 text-xs text-slate-500 hover:text-slate-700 py-1">Clear</button>
+                        <button onClick={() => setDatePickerOpen(false)}
+                          className="flex-1 text-xs bg-brand-600 text-white rounded-lg py-1.5 hover:bg-brand-700 font-medium">Apply</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+              {(dateFrom || dateTo || selectedWorker) && (
+                <button onClick={() => { setDateFrom(''); setDateTo(''); setSelectedWorker(null); setSearchQuery(''); setStatusFilter('all'); }}
                   className="text-xs text-brand-600 hover:underline">Clear filters</button>
               )}
             </div>

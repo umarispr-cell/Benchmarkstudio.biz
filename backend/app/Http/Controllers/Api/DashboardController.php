@@ -2118,7 +2118,14 @@ class DashboardController extends Controller
 
         // ─── 2. Build UNION query across all project order tables ───
         $statusFilter = $request->input('status', 'all');
-        $dateFilter = $request->input('date', today()->toDateString());
+        // Support date range: date_from & date_to, fallback to single 'date' param, then today
+        $dateFrom = $request->input('date_from');
+        $dateTo = $request->input('date_to');
+        $dateFilter = $request->input('date');
+        // If neither range nor single date provided, default to today
+        if (!$dateFrom && !$dateTo && !$dateFilter) {
+            $dateFilter = today()->toDateString();
+        }
         $search = $request->input('search');
         $assignedTo = $request->input('assigned_to');
         // Pagination removed – return all orders in a single page
@@ -2190,7 +2197,21 @@ class DashboardController extends Controller
                   ->whereNotIn('workflow_state', ['DELIVERED', 'CANCELLED']);
         }
 
-        if ($dateFilter) {
+        // Apply date range filter
+        $dateStart = null;
+        $dateEnd = null;
+        if ($dateFrom || $dateTo) {
+            // Range mode
+            if ($dateFrom) {
+                $dateStart = \Carbon\Carbon::parse($dateFrom)->startOfDay();
+                $query->where('received_at', '>=', $dateStart);
+            }
+            if ($dateTo) {
+                $dateEnd = \Carbon\Carbon::parse($dateTo)->addDay()->startOfDay();
+                $query->where('received_at', '<', $dateEnd);
+            }
+        } elseif ($dateFilter) {
+            // Single date mode (backward compat)
             $dateStart = \Carbon\Carbon::parse($dateFilter)->startOfDay();
             $dateEnd = \Carbon\Carbon::parse($dateFilter)->addDay()->startOfDay();
             $query->where('received_at', '>=', $dateStart)
@@ -2228,11 +2249,11 @@ class DashboardController extends Controller
 
         // ─── 3. Counts (single aggregation query instead of 6 separate queries) ───
         $baseQ = DB::table(DB::raw("({$unionQuery}) as queue_orders"));
-        if ($dateFilter) {
-            $dateStart = $dateStart ?? \Carbon\Carbon::parse($dateFilter)->startOfDay();
-            $dateEnd = $dateEnd ?? \Carbon\Carbon::parse($dateFilter)->addDay()->startOfDay();
-            $baseQ->where('received_at', '>=', $dateStart)
-                  ->where('received_at', '<', $dateEnd);
+        if ($dateStart) {
+            $baseQ->where('received_at', '>=', $dateStart);
+        }
+        if ($dateEnd) {
+            $baseQ->where('received_at', '<', $dateEnd);
         }
 
         $countsRow = (clone $baseQ)->selectRaw("
